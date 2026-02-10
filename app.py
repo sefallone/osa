@@ -737,23 +737,23 @@ def main():
             **Ejemplo para "FALLONE, JAN" (CONSULTOR por encima del promedio):**
             
             **Datos:**
-            - Importe HHMM Total: €2,000.00
-            - Promedio subespecialidad: €1,800.00
+            - Importe HHMM Total: 2,000.00
+            - Promedio subespecialidad: 1,800.00
             - Tipo: CONSULTOR (por encima → 92%)
             
             **Cálculos:**
             1. **% a Cobrar (Médico):** 92%
             2. **% OSA:** 100% - 92% = **8%**
-            3. **Total a Cobrar (Médico):** €2,000 × 92% = **€1,840**
-            4. **A Cobrar OSA:** €2,000 - €1,840 = **€160**
+            3. **Total a Cobrar (Médico):** 2,000 × 92% = **1,840**
+            4. **A Cobrar OSA:** 2,000 - 1,840 = **160**
             
             **Verificación:**
-            - €1,840 + €160 = €2,000 ✓
+            - 1,840 + 160 = 2,000 ✓
             - 92% + 8% = 100% ✓
             
             **Distribución final:**
-            - **Médico recibe:** €1,840 (92%)
-            - **OSA recibe:** €160 (8%)
+            - **Médico recibe:** 1,840 (92%)
+            - **OSA recibe:** 160 (8%)
             """)
 
 if __name__ == "__main__":
