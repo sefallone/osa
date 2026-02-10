@@ -733,7 +733,7 @@ def main():
         
         # Mostrar ejemplo de datos disponibles
         with st.expander("📝 Ejemplo de cálculo con nuevos KPIs", expanded=False):
-            st.markdown("""OK""")
+            st.markdown("OK")
             
 
 if __name__ == "__main__":
