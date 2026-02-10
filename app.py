@@ -73,41 +73,71 @@ def procesar_datos(df):
 def calcular_kpis(df):
     """Calcula KPIs y estadísticas"""
     if df.empty:
-        return None
+        return None, None, None, None
     
-    # Calcular promedios por subespecialidad
-    promedios = df.groupby('Subespecialidad')['Importe HHMM'].mean().to_dict()
+    # 1. Calcular promedio por subespecialidad (suma total / número de médicos únicos)
+    promedios_especialidad = {}
+    promedios_detalle = {}  # Para almacenar detalles del cálculo
     
-    # Función para calcular "A Cobrar"
+    for especialidad in df['Subespecialidad'].unique():
+        # Filtrar por subespecialidad
+        df_especialidad = df[df['Subespecialidad'] == especialidad]
+        
+        if not df_especialidad.empty:
+            # Suma total del Importe HHMM para esa subespecialidad
+            suma_total = df_especialidad['Importe HHMM'].sum()
+            
+            # Número de médicos únicos en esa subespecialidad
+            num_medicos = df_especialidad['Profesional'].nunique()
+            
+            # Calcular promedio
+            promedio = suma_total / num_medicos if num_medicos > 0 else 0
+            
+            promedios_especialidad[especialidad] = promedio
+            promedios_detalle[especialidad] = {
+                'suma_total': suma_total,
+                'num_medicos': num_medicos,
+                'promedio': promedio
+            }
+    
+    # 2. Calcular "A Cobrar" para cada fila
     def calcular_a_cobrar(row):
         if pd.isnull(row['Importe HHMM']) or pd.isnull(row['Subespecialidad']):
             return 0
         
-        promedio_especialidad = promedios.get(row['Subespecialidad'], 0)
+        especialidad = row['Subespecialidad']
+        promedio_especialidad = promedios_especialidad.get(especialidad, 0)
         importe_hhmm = row['Importe HHMM']
         tipo_medico = row['Tipo Médico']
         
-        if importe_hhmm >= promedio_especialidad:
-            # Por encima del promedio
-            if tipo_medico == 'CONSULTOR':
+        # Determinar si está por encima o por debajo del promedio
+        por_encima_promedio = importe_hhmm >= promedio_especialidad
+        
+        if tipo_medico == 'CONSULTOR':
+            if por_encima_promedio:
                 return importe_hhmm * 0.92
-            elif tipo_medico == 'ESPECIALISTA':
+            else:
+                return importe_hhmm * 0.88
+        elif tipo_medico == 'ESPECIALISTA':
+            if por_encima_promedio:
                 return importe_hhmm * 0.90
             else:
-                return importe_hhmm * 0.90  # Por defecto
-        else:
-            # Por debajo del promedio
-            if tipo_medico == 'CONSULTOR':
-                return importe_hhmm * 0.88
-            elif tipo_medico == 'ESPECIALISTA':
                 return importe_hhmm * 0.85
-            else:
-                return importe_hhmm * 0.85  # Por defecto
+        else:
+            # Por defecto si no está clasificado
+            return importe_hhmm * 0.90
     
     # Aplicar cálculo
     df['A Cobrar'] = df.apply(calcular_a_cobrar, axis=1)
     
-    # Estadísticas generales
+    # 3. Calcular "Promedio Facturado por la Unidad" para cada subespecialidad
+    # Esto es el mismo cálculo que ya hicimos: suma total / número de médicos
+    df['Promedio Facturado por Unidad'] = df.apply(
+        lambda row: promedios_especialidad.get(row['Subespecialidad'], 0), 
+        axis=1
+    )
+    
+    # 4. Estadísticas generales
     stats = {
         'total_registros': len(df),
         'total_importe_hhmm': df['Importe HHMM'].sum(),
@@ -116,14 +146,16 @@ def calcular_kpis(df):
         'promedio_a_cobrar': df['A Cobrar'].mean(),
         'num_profesionales': df['Profesional'].nunique(),
         'num_aseguradoras': df['Aseguradora'].nunique() if 'Aseguradora' in df.columns else 0,
+        'num_subespecialidades': df['Subespecialidad'].nunique(),
         'fecha_min': df['Fecha del Servicio'].min(),
         'fecha_max': df['Fecha del Servicio'].max()
     }
     
-    return df, stats, promedios
+    return df, stats, promedios_especialidad, promedios_detalle
 
-def crear_dashboard(df, stats):
+def crear_dashboard(df, stats, promedios_detalle):
     """Crea visualizaciones del dashboard"""
+    # Primera fila de KPIs
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
@@ -138,6 +170,66 @@ def crear_dashboard(df, stats):
     with col4:
         st.metric("👨‍⚕️ Profesionales", stats['num_profesionales'])
     
+    # Segunda fila de KPIs específicos
+    col5, col6, col7, col8 = st.columns(4)
+    
+    with col5:
+        st.metric("🏥 Subespecialidades", stats['num_subespecialidades'])
+    
+    with col6:
+        st.metric("📈 Prom. Importe HHMM", f"€{stats['promedio_importe_hhmm']:,.2f}")
+    
+    with col7:
+        st.metric("📊 Prom. A Cobrar", f"€{stats['promedio_a_cobrar']:,.2f}")
+    
+    with col8:
+        st.metric("🏢 Aseguradoras", stats['num_aseguradoras'])
+    
+    st.markdown("---")
+    
+    # Mostrar promedios por subespecialidad en una tabla
+    st.subheader("📊 Promedio Facturado por Unidad (por Subespecialidad)")
+    
+    if promedios_detalle:
+        # Crear DataFrame de promedios
+        promedios_df = pd.DataFrame.from_dict(promedios_detalle, orient='index')
+        promedios_df = promedios_df.reset_index()
+        promedios_df.columns = ['Subespecialidad', 'Detalles']
+        
+        # Expandir la columna de detalles
+        promedios_expanded = pd.json_normalize(promedios_df['Detalles'])
+        promedios_df = pd.concat([promedios_df[['Subespecialidad']], promedios_expanded], axis=1)
+        
+        # Formatear columnas
+        promedios_df['suma_total'] = promedios_df['suma_total'].round(2)
+        promedios_df['promedio'] = promedios_df['promedio'].round(2)
+        
+        # Mostrar tabla
+        st.dataframe(
+            promedios_df,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Subespecialidad": "Subespecialidad",
+                "suma_total": st.column_config.NumberColumn(
+                    "Suma Total (€)",
+                    help="Suma total del Importe HHMM para la subespecialidad",
+                    format="€%.2f"
+                ),
+                "num_medicos": st.column_config.NumberColumn(
+                    "N° Médicos",
+                    help="Número de médicos únicos en la subespecialidad"
+                ),
+                "promedio": st.column_config.NumberColumn(
+                    "Promedio por Unidad (€)",
+                    help="Suma Total / N° Médicos",
+                    format="€%.2f"
+                )
+            }
+        )
+    else:
+        st.info("No hay datos suficientes para calcular promedios por subespecialidad.")
+    
     st.markdown("---")
     
     # Gráficos
@@ -145,56 +237,81 @@ def crear_dashboard(df, stats):
     
     with col1:
         # Gráfico de barras por profesional
-        profesional_importe = df.groupby('Profesional')['Importe HHMM'].sum().sort_values(ascending=False).head(10)
-        fig1 = px.bar(
-            x=profesional_importe.values,
-            y=profesional_importe.index,
-            orientation='h',
-            title='Top 10 Profesionales por Importe HHMM',
-            labels={'x': 'Importe HHMM (€)', 'y': 'Profesional'}
-        )
-        fig1.update_layout(height=400)
-        st.plotly_chart(fig1, use_container_width=True)
+        if 'Profesional' in df.columns and 'A Cobrar' in df.columns:
+            profesional_acobrar = df.groupby('Profesional')['A Cobrar'].sum().sort_values(ascending=False).head(10)
+            fig1 = px.bar(
+                x=profesional_acobrar.values,
+                y=profesional_acobrar.index,
+                orientation='h',
+                title='Top 10 Profesionales por "A Cobrar"',
+                labels={'x': 'A Cobrar (€)', 'y': 'Profesional'},
+                color=profesional_acobrar.values,
+                color_continuous_scale='Viridis'
+            )
+            fig1.update_layout(height=400)
+            st.plotly_chart(fig1, use_container_width=True)
     
     with col2:
-        # Gráfico por subespecialidad
-        especialidad_importe = df.groupby('Subespecialidad')['Importe HHMM'].sum()
-        fig2 = px.pie(
-            values=especialidad_importe.values,
-            names=especialidad_importe.index,
-            title='Distribución por Subespecialidad',
-            hole=0.3
-        )
-        fig2.update_layout(height=400)
-        st.plotly_chart(fig2, use_container_width=True)
+        # Gráfico por subespecialidad - Comparación Importe HHMM vs A Cobrar
+        if 'Subespecialidad' in df.columns:
+            especialidad_comparacion = df.groupby('Subespecialidad').agg({
+                'Importe HHMM': 'sum',
+                'A Cobrar': 'sum'
+            }).reset_index()
+            
+            # Crear gráfico de barras agrupadas
+            fig2 = go.Figure(data=[
+                go.Bar(name='Importe HHMM', x=especialidad_comparacion['Subespecialidad'], 
+                      y=especialidad_comparacion['Importe HHMM'], marker_color='#1E88E5'),
+                go.Bar(name='A Cobrar', x=especialidad_comparacion['Subespecialidad'], 
+                      y=especialidad_comparacion['A Cobrar'], marker_color='#FF9800')
+            ])
+            
+            fig2.update_layout(
+                title='Comparación: Importe HHMM vs A Cobrar por Subespecialidad',
+                barmode='group',
+                height=400,
+                xaxis_title='Subespecialidad',
+                yaxis_title='Importe (€)',
+                legend_title='Tipo de Importe'
+            )
+            st.plotly_chart(fig2, use_container_width=True)
     
     col3, col4 = st.columns(2)
     
     with col3:
-        # Gráfico por tipo de médico
-        tipo_importe = df.groupby('Tipo Médico')['Importe HHMM'].sum()
-        fig3 = px.bar(
-            x=tipo_importe.index,
-            y=tipo_importe.values,
-            title='Importe HHMM por Tipo de Médico',
-            labels={'x': 'Tipo de Médico', 'y': 'Importe HHMM (€)'},
-            color=tipo_importe.index
-        )
-        fig3.update_layout(height=400)
-        st.plotly_chart(fig3, use_container_width=True)
+        # Gráfico de distribución por tipo de médico
+        if 'Tipo Médico' in df.columns and 'A Cobrar' in df.columns:
+            tipo_distribucion = df.groupby('Tipo Médico')['A Cobrar'].sum()
+            fig3 = px.pie(
+                values=tipo_distribucion.values,
+                names=tipo_distribucion.index,
+                title='Distribución de "A Cobrar" por Tipo de Médico',
+                hole=0.4,
+                color=tipo_distribucion.index,
+                color_discrete_map={'CONSULTOR': '#4CAF50', 'ESPECIALISTA': '#FF5722'}
+            )
+            fig3.update_layout(height=400)
+            st.plotly_chart(fig3, use_container_width=True)
     
     with col4:
-        # Evolución temporal
-        if 'Fecha del Servicio' in df.columns:
+        # Evolución temporal del "A Cobrar"
+        if 'Fecha del Servicio' in df.columns and 'A Cobrar' in df.columns:
             df['Fecha'] = df['Fecha del Servicio'].dt.date
-            temporal = df.groupby('Fecha')['Importe HHMM'].sum().reset_index()
+            temporal = df.groupby('Fecha')['A Cobrar'].sum().reset_index()
             fig4 = px.line(
                 temporal,
                 x='Fecha',
-                y='Importe HHMM',
-                title='Evolución Diaria del Importe HHMM'
+                y='A Cobrar',
+                title='Evolución Diaria de "A Cobrar"',
+                markers=True
             )
-            fig4.update_layout(height=400)
+            fig4.update_layout(
+                height=400,
+                xaxis_title='Fecha',
+                yaxis_title='A Cobrar (€)'
+            )
+            fig4.update_traces(line=dict(color='#9C27B0', width=3))
             st.plotly_chart(fig4, use_container_width=True)
 
 def main():
@@ -221,33 +338,37 @@ def main():
                 st.error(f"Error al cargar el archivo: {e}")
                 st.stop()
         else:
-            # Usar datos de ejemplo
+            # Usar datos de ejemplo del archivo proporcionado
             st.info("📋 Usando datos de ejemplo")
-            # Crear DataFrame de ejemplo basado en la estructura proporcionada
-            df = pd.DataFrame([
-                {
-                    "Acreedor": "ORTHOPAEDIC SPECIALIST ALLIANCE SLU",
-                    "Profesional": "FALLONE, JAN",
-                    "Especialidad": "Traumatología y cir ortopédica",
-                    "Clase aseguradora": "NAC",
-                    "Aseguradora": "AXA SALUD, AXA SEGUROS GENERALES SOCIEDAD",
-                    "Nº de Episodio": 1013682955,
-                    "Nombre paciente": "CAMACHO BARBA, VICENTE",
-                    "Fecha del Servicio": "2025-12-30",
-                    "Hora del Servicio": "18:15:00",
-                    "Tipo de Episodio": "Epis.ambulante",
-                    "Tipo de Prestación": "HME",
-                    "Tipo de Prestación 2": "CEX",
-                    "Cantidad": 1,
-                    "Código de Prestación": 1,
-                    "Descripción de Prestación": "CONSULTA",
-                    "Importe HHMM": 19.6,
-                    "% Liquidación": 70,
-                    "Nº Autofactura": "26VBEF0000049206",
-                    "Nº Factura del Episodio": "BE26TI000000312",
-                    "Fecha de Liquidación": "2026-01-30"
-                }
-            ])
+            try:
+                # Leer datos del ejemplo proporcionado
+                df = pd.read_excel('prueba_sys.xlsx')
+            except:
+                # Crear DataFrame de ejemplo si no existe el archivo
+                df = pd.DataFrame([
+                    {
+                        "Acreedor": "ORTHOPAEDIC SPECIALIST ALLIANCE SLU",
+                        "Profesional": "FALLONE, JAN",
+                        "Especialidad": "Traumatología y cir ortopédica",
+                        "Clase aseguradora": "NAC",
+                        "Aseguradora": "AXA SALUD, AXA SEGUROS GENERALES SOCIEDAD",
+                        "Nº de Episodio": 1013682955,
+                        "Nombre paciente": "CAMACHO BARBA, VICENTE",
+                        "Fecha del Servicio": "2025-12-30",
+                        "Hora del Servicio": "18:15:00",
+                        "Tipo de Episodio": "Epis.ambulante",
+                        "Tipo de Prestación": "HME",
+                        "Tipo de Prestación 2": "CEX",
+                        "Cantidad": 1,
+                        "Código de Prestación": 1,
+                        "Descripción de Prestación": "CONSULTA",
+                        "Importe HHMM": 19.6,
+                        "% Liquidación": 70,
+                        "Nº Autofactura": "26VBEF0000049206",
+                        "Nº Factura del Episodio": "BE26TI000000312",
+                        "Fecha de Liquidación": "2026-01-30"
+                    }
+                ])
         
         st.markdown("---")
         st.header("🔍 Filtros")
@@ -317,76 +438,115 @@ def main():
         
         if not df_filtrado.empty:
             # Calcular KPIs
-            df_con_kpis, stats, promedios = calcular_kpis(df_filtrado)
+            df_con_kpis, stats, promedios_especialidad, promedios_detalle = calcular_kpis(df_filtrado)
             
-            # Mostrar dashboard
-            crear_dashboard(df_con_kpis, stats)
-            
-            st.markdown("---")
-            
-            # Mostrar tabla con datos procesados
-            with st.expander("📋 Ver Datos Procesados", expanded=False):
-                st.dataframe(
-                    df_con_kpis,
-                    use_container_width=True,
-                    hide_index=True,
-                    column_config={
-                        "Importe HHMM": st.column_config.NumberColumn(format="€%.2f"),
-                        "Importe Total": st.column_config.NumberColumn(format="€%.2f"),
-                        "A Cobrar": st.column_config.NumberColumn(format="€%.2f")
-                    }
+            if df_con_kpis is not None:
+                # Mostrar dashboard
+                crear_dashboard(df_con_kpis, stats, promedios_detalle)
+                
+                st.markdown("---")
+                
+                # Mostrar tabla con datos procesados
+                with st.expander("📋 Ver Datos Procesados Completos", expanded=False):
+                    st.dataframe(
+                        df_con_kpis,
+                        use_container_width=True,
+                        hide_index=True,
+                        column_config={
+                            "Importe HHMM": st.column_config.NumberColumn(format="€%.2f"),
+                            "Importe Total": st.column_config.NumberColumn(format="€%.2f"),
+                            "A Cobrar": st.column_config.NumberColumn(format="€%.2f"),
+                            "Promedio Facturado por Unidad": st.column_config.NumberColumn(format="€%.2f")
+                        }
+                    )
+                
+                # Botón para descargar resultados
+                output = io.BytesIO()
+                with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                    df_con_kpis.to_excel(writer, index=False, sheet_name='Datos_Procesados')
+                    
+                    # También guardar los promedios en otra hoja
+                    if promedios_detalle:
+                        promedios_df = pd.DataFrame.from_dict(promedios_detalle, orient='index')
+                        promedios_df = promedios_df.reset_index()
+                        promedios_df.columns = ['Subespecialidad', 'Detalles']
+                        promedios_expanded = pd.json_normalize(promedios_df['Detalles'])
+                        promedios_completo = pd.concat([promedios_df[['Subespecialidad']], promedios_expanded], axis=1)
+                        promedios_completo.to_excel(writer, index=False, sheet_name='Promedios_Subespecialidad')
+                
+                output.seek(0)
+                
+                st.download_button(
+                    label="📥 Descargar Datos Procesados (Excel)",
+                    data=output,
+                    file_name="datos_procesados_con_promedios.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True
                 )
-            
-            # Mostrar promedios por especialidad
-            with st.expander("📊 Promedios por Subespecialidad", expanded=False):
-                promedios_df = pd.DataFrame.from_dict(promedios, orient='index', columns=['Promedio Importe HHMM'])
-                promedios_df['Promedio Importe HHMM'] = promedios_df['Promedio Importe HHMM'].round(2)
-                st.dataframe(promedios_df, use_container_width=True)
-            
-            # Botón para descargar resultados
-            output = io.BytesIO()
-            with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                df_con_kpis.to_excel(writer, index=False, sheet_name='Datos_Procesados')
-            output.seek(0)
-            
-            st.download_button(
-                label="📥 Descargar Datos Procesados (Excel)",
-                data=output,
-                file_name="datos_procesados.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True
-            )
+            else:
+                st.warning("No se pudieron calcular los KPIs. Verifique los datos.")
         else:
             st.warning("No hay datos que cumplan con los filtros seleccionados.")
     else:
         # Pantalla de inicio
         st.markdown("""
-        ## Bienvenido al Dashboard de Análisis de Facturación Médica
+        ## 🏥 Bienvenido al Dashboard de Análisis de Facturación Médica
         
-        ### Instrucciones:
+        ### 📋 Instrucciones:
         1. **Carga tu archivo Excel** usando el panel lateral
-        2. **Aplica los filtros** que necesites
-        3. **Haz clic en 'Calcular KPIs'** para generar el análisis
+        2. **Aplica los filtros** que necesites (fechas, profesional, prestación, aseguradora)
+        3. **Haz clic en 'Calcular KPIs'** para generar el análisis completo
         
-        ### Características:
-        - 🏥 **Procesamiento automático** de datos médicos
-        - 📈 **Cálculo de KPIs** personalizados
-        - 💰 **Cálculo de "A Cobrar"** según reglas específicas
-        - 🔍 **Filtros interactivos** por fecha, profesional, prestación y aseguradora
-        - 📊 **Visualizaciones dinámicas** con gráficos interactivos
-        - 📥 **Exportación** de resultados procesados
+        ### ⚙️ **Cálculos Automáticos:**
         
-        ### Columnas que se generan automáticamente:
-        - **Importe Total**: Calculado a partir de Importe HHMM y % Liquidación
-        - **Subespecialidad**: Según la lista de profesionales proporcionada
-        - **Tipo Médico**: CONSULTOR o ESPECIALISTA
-        - **A Cobrar**: Calculado según las reglas de negocio
+        #### 1. **Promedio por Subespecialidad:**
+        ```
+        Promedio = (Suma Total del Importe HHMM por Subespecialidad) / (Número de Médicos Únicos)
+        ```
+        
+        #### 2. **"A Cobrar" - Cálculo por Tipo de Médico:**
+        - **CONSULTOR por encima del promedio**: 92% del Importe HHMM
+        - **CONSULTOR por debajo del promedio**: 88% del Importe HHMM
+        - **ESPECIALISTA por encima del promedio**: 90% del Importe HHMM
+        - **ESPECIALISTA por debajo del promedio**: 85% del Importe HHMM
+        
+        #### 3. **Promedio Facturado por la Unidad:**
+        - Muestra el promedio calculado para cada subespecialidad
+        - Este valor se repite para cada registro según su subespecialidad
+        
+        ### 📊 **KPIs Generados:**
+        - **Importe Total** (100% calculado)
+        - **Subespecialidad** y **Tipo de Médico**
+        - **A Cobrar** (según reglas específicas)
+        - **Promedio Facturado por Unidad**
+        - **Métricas generales** y gráficos interactivos
+        
+        ### 📈 **Visualizaciones Incluidas:**
+        - Top 10 profesionales por "A Cobrar"
+        - Comparación Importe HHMM vs A Cobrar por subespecialidad
+        - Distribución por tipo de médico
+        - Evolución temporal
+        - Tabla detallada de promedios
         
         *Si no cargas un archivo, se usarán datos de ejemplo.*
         """)
         
-        st.image("https://cdn.pixabay.com/photo/2017/10/04/09/56/laboratory-2815641_1280.jpg", 
-                caption="Dashboard de Análisis Médico", use_column_width=True)
+        # Mostrar ejemplo de cálculo
+        with st.expander("📝 Ejemplo de Cálculo", expanded=False):
+            st.markdown("""
+            **Ejemplo: Subespecialidad "MANO"**
+            
+            - Médico 1: Importe HHMM = €1,200
+            - Médico 2: Importe HHMM = €1,800
+            - **Total subespecialidad** = €3,000
+            - **Número de médicos** = 2
+            - **Promedio por unidad** = €3,000 / 2 = **€1,500**
+            
+            **Cálculo "A Cobrar" para Médico 1 (€1,200):**
+            - Está por debajo del promedio (€1,200 < €1,500)
+            - Si es CONSULTOR: €1,200 × 88% = **€1,056**
+            - Si es ESPECIALISTA: €1,200 × 85% = **€1,020**
+            """)
 
 if __name__ == "__main__":
     main()
