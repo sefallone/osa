@@ -29,7 +29,7 @@ PROFESIONALES_INFO = {
     "MAIO MÉNDEZ, TOMAS EDUARDO": {"especialidad": "RODILLA", "tipo": "ESPECIALISTA"},
     "MONSONET VILLA, PABLO": {"especialidad": "RODILLA", "tipo": "CONSULTOR"},
     "PUIGDELLIVOL GRIFELL, JORDI": {"especialidad": "RODILLA", "tipo": "CONSULTOR"},
-    "CASACCIA, MARCELO AGUSTIN": {"especialidad": "RODILLA", "tipo": "CONSULTOR"}
+    "CASACCIA, MARCELO AGUSTIN": {"especialidad": "RODILLa", "tipo": "CONSULTOR"}
 }
 
 def procesar_datos(df):
@@ -70,7 +70,7 @@ def procesar_datos(df):
 
 def calcular_promedio_subespecialidad(df, subespecialidad):
     """Calcula el promedio de facturación para una subespecialidad específica"""
-    if subespecialidad not in df['Subespecialidad'].values:
+    if 'Subespecialidad' not in df.columns or subespecialidad not in df['Subespecialidad'].values:
         return 0, 0, 0
     
     # Filtrar por subespecialidad
@@ -145,8 +145,7 @@ def crear_dashboard_medico(df_medico, kpis, promedio_info):
     st.header(f"👨‍⚕️ {nombre_medico}")
     st.subheader(f"Subespecialidad: {subespecialidad}")
     
-    # KPIs en 4 filas de 2 columnas (8 KPIs total)
-    # Fila 1: Registros e Importes
+    # KPIs en 4 columnas
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
@@ -163,7 +162,7 @@ def crear_dashboard_medico(df_medico, kpis, promedio_info):
             help="Descontados % Vithas"
         )
           
-    with co3:
+    with col3:
         # Mostrar si está por encima o por debajo del promedio
         if kpis['por_encima_promedio']:
             delta_text = "↑ Por encima"
@@ -186,8 +185,8 @@ def crear_dashboard_medico(df_medico, kpis, promedio_info):
             f"{kpis['total_registros']:,}",
             help="Número total de servicios prestados"
         )
-        
-
+    
+    # Segunda fila de KPIs
     col5, col6 = st.columns(2)
     
     with col5:
@@ -205,7 +204,7 @@ def crear_dashboard_medico(df_medico, kpis, promedio_info):
             help="Porcentaje para OSA = 100% - % a Cobrar"
         )
     
-    # Fila 4: Totales a cobrar
+    # Tercera fila de KPIs
     col7, col8 = st.columns(2)
     
     with col7:
@@ -300,8 +299,8 @@ def crear_dashboard_medico(df_medico, kpis, promedio_info):
         - **Importe Cobrado OSA:** €{kpis['importe_hhmm_total']:,.2f}
         - **Total a Cobrar (Médico):** €{kpis['importe_hhmm_total']:,.2f} × {kpis['porcentaje_cobrar']:.1f}% = **€{kpis['total_a_cobrar']:,.2f}**
         - **OSA se queda con:** €{kpis['importe_hhmm_total']:,.2f} - €{kpis['total_a_cobrar']:,.2f} = **€{kpis['a_cobrar_osa']:,.2f}**
-        
-           
+        """)
+    
     st.markdown("---")
     
     # Análisis por Tipo de Prestación
@@ -491,9 +490,6 @@ def crear_dashboard_medico(df_medico, kpis, promedio_info):
             use_container_width=True
         )
 
-# [El resto del código permanece igual desde aquí...]
-# Solo necesito copiar la función main() completa
-
 def main():
     # Sidebar simplificado
     with st.sidebar:
@@ -676,7 +672,7 @@ def main():
             crear_dashboard_medico(df_medico, kpis_medico, promedio_info)
     else:
         # Pantalla de inicio
-        st.markdown("
+        st.markdown("""
         ## 👨‍⚕️ Bienvenido al Dashboard de Análisis Médico Individual
         
         ### 📋 Instrucciones:
@@ -688,20 +684,18 @@ def main():
         ### 📊 **KPIs que se generan por médico (8 KPIs total):**
         
         #### **Fila 1 - Registros e Importes:**
-        - **Total Registros**: Número de servicios prestados
-        - **Importe Total**: Suma del importe al 100%
-        
-        #### **Fila 2 - Facturación y Comparación:**
-        - **Importe HHMM Total**: Suma del Importe HHMM
+        - **Facturado x Vithas**: Importe total al 100%
+        - **Cobrado x OSA**: Importe HHMM (descontado % Vithas)
         - **Promedio Subespecialidad**: Comparativa con otros médicos
+        - **Total Registros**: Número de servicios prestados
         
-        #### **Fila 3 - Porcentajes:**
+        #### **Fila 2 - Porcentajes:**
         - **% a Cobrar (Médico)**: Porcentaje que recibe el médico
-        - **% OSA**: Porcentaje que recibe OSA (100% - % Médico)
+        - **% OSA**: Porcentaje que retiene OSA (100% - % Médico)
         
-        #### **Fila 4 - Montos a Cobrar:**
+        #### **Fila 3 - Montos a Cobrar:**
         - **Total a Cobrar (Médico)**: Monto que recibe el médico
-        - **A Cobrar OSA**: Monto que recibe OSA
+        - **OSA se queda con**: Monto que retiene OSA
         
         ### 📋 **Nuevos KPIs Agregados:**
         
@@ -711,10 +705,10 @@ def main():
         Ejemplo: Si médico recibe 92%, OSA recibe 8%
         ```
         
-        **2. A Cobrar OSA:**
+        **2. OSA se queda con:**
         ```
-        A Cobrar OSA = Importe HHMM Total - Total a Cobrar (Médico)
-        Ejemplo: 1,000 total - 920 médico = 80 OSA
+        OSA retiene = Importe HHMM Total - Total a Cobrar (Médico)
+        Ejemplo: €1,000 total - €920 médico = €80 OSA
         ```
         
         ### 📋 **Análisis por Tipo de Prestación:**
@@ -728,9 +722,8 @@ def main():
         - **Ver todos los registros** del médico
         - **Detalles del cálculo** completo
         
-        ")
-        
-                   
+        *Si no cargas un archivo, se usarán datos de ejemplo con 3 médicos diferentes.*
+        """)
 
 if __name__ == "__main__":
     main()
