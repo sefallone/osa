@@ -71,13 +71,13 @@ def procesar_datos(df):
 def calcular_promedio_subespecialidad(df, subespecialidad):
     """Calcula el promedio de facturación para una subespecialidad específica"""
     if subespecialidad not in df['Subespecialidad'].values:
-        return 0
+        return 0, 0, 0
     
     # Filtrar por subespecialidad
     df_especialidad = df[df['Subespecialidad'] == subespecialidad]
     
     if df_especialidad.empty:
-        return 0
+        return 0, 0, 0
     
     # Suma total del Importe HHMM para esa subespecialidad
     suma_total = df_especialidad['Importe HHMM'].sum()
@@ -115,6 +115,13 @@ def calcular_a_cobrar_individual(df_medico, promedio_subespecialidad):
     
     total_a_cobrar = importe_hhmm_total * porcentaje_cobrar
     
+    # CALCULAR NUEVOS KPIs
+    # % OSA = 100% - % a Cobrar
+    porcentaje_osa = 100 - (porcentaje_cobrar * 100)
+    
+    # A Cobrar OSA = Importe HHMM Total - Total a Cobrar
+    a_cobrar_osa = importe_hhmm_total - total_a_cobrar
+    
     return {
         'total_registros': total_registros,
         'importe_total': importe_total,
@@ -122,6 +129,8 @@ def calcular_a_cobrar_individual(df_medico, promedio_subespecialidad):
         'promedio_subespecialidad': promedio_subespecialidad,
         'porcentaje_cobrar': porcentaje_cobrar * 100,  # En porcentaje
         'total_a_cobrar': total_a_cobrar,
+        'porcentaje_osa': porcentaje_osa,  # NUEVO KPI
+        'a_cobrar_osa': a_cobrar_osa,      # NUEVO KPI
         'tipo_medico': tipo_medico,
         'por_encima_promedio': por_encima_promedio
     }
@@ -136,7 +145,8 @@ def crear_dashboard_medico(df_medico, kpis, promedio_info):
     st.header(f"👨‍⚕️ {nombre_medico}")
     st.subheader(f"Subespecialidad: {subespecialidad}")
     
-    # KPIs en 3 filas de 2 columnas
+    # KPIs en 4 filas de 2 columnas (8 KPIs total)
+    # Fila 1: Registros e Importes
     col1, col2 = st.columns(2)
     
     with col1:
@@ -153,6 +163,7 @@ def crear_dashboard_medico(df_medico, kpis, promedio_info):
             help="Importe total calculado al 100%"
         )
     
+    # Fila 2: Importe HHMM y Promedio
     col3, col4 = st.columns(2)
     
     with col3:
@@ -179,40 +190,123 @@ def crear_dashboard_medico(df_medico, kpis, promedio_info):
             help=f"Promedio de {subespecialidad}: €{promedio_info['suma_total']:,.2f} / {promedio_info['num_medicos']} médicos"
         )
     
+    # Fila 3: Porcentajes de cobro
     col5, col6 = st.columns(2)
     
     with col5:
         st.metric(
-            "📋 % a Cobrar",
+            "📋 % a Cobrar (Médico)",
             f"{kpis['porcentaje_cobrar']:.1f}%",
             help=f"{kpis['tipo_medico']} {'por encima' if kpis['por_encima_promedio'] else 'por debajo'} del promedio"
         )
     
     with col6:
+        # NUEVO KPI: % OSA
         st.metric(
-            "💳 Total a Cobrar",
+            "🏥 % OSA",
+            f"{kpis['porcentaje_osa']:.1f}%",
+            help="Porcentaje para OSA = 100% - % a Cobrar"
+        )
+    
+    # Fila 4: Totales a cobrar
+    col7, col8 = st.columns(2)
+    
+    with col7:
+        st.metric(
+            "💳 Total a Cobrar (Médico)",
             f"€{kpis['total_a_cobrar']:,.2f}",
             help=f"Calculado: €{kpis['importe_hhmm_total']:,.2f} × {kpis['porcentaje_cobrar']:.1f}%"
         )
     
+    with col8:
+        # NUEVO KPI: A Cobrar OSA
+        st.metric(
+            "💰 A Cobrar OSA",
+            f"€{kpis['a_cobrar_osa']:,.2f}",
+            help=f"Calculado: €{kpis['importe_hhmm_total']:,.2f} - €{kpis['total_a_cobrar']:,.2f}"
+        )
+    
     st.markdown("---")
     
-    # Información detallada del promedio
-    with st.expander("ℹ️ Detalles del cálculo del promedio", expanded=False):
+    # Resumen visual de distribución
+    st.subheader("📊 Distribución del Importe HHMM")
+    
+    # Crear gráfico de barras para mostrar la distribución
+    distribucion_data = {
+        'Concepto': ['Médico', 'OSA'],
+        'Monto': [kpis['total_a_cobrar'], kpis['a_cobrar_osa']],
+        'Porcentaje': [kpis['porcentaje_cobrar'], kpis['porcentaje_osa']]
+    }
+    
+    distribucion_df = pd.DataFrame(distribucion_data)
+    
+    col_chart1, col_chart2 = st.columns(2)
+    
+    with col_chart1:
+        # Gráfico de barras para montos
+        fig_montos = px.bar(
+            distribucion_df,
+            x='Concepto',
+            y='Monto',
+            title='Distribución por Monto (€)',
+            color='Concepto',
+            text_auto='.2f',
+            color_discrete_map={'Médico': '#4CAF50', 'OSA': '#2196F3'}
+        )
+        fig_montos.update_layout(
+            height=300,
+            showlegend=False,
+            yaxis_title='Monto (€)'
+        )
+        fig_montos.update_traces(texttemplate='€%{value:,.2f}', textposition='outside')
+        st.plotly_chart(fig_montos, use_container_width=True)
+    
+    with col_chart2:
+        # Gráfico de pastel para porcentajes
+        fig_porcentajes = px.pie(
+            distribucion_df,
+            values='Porcentaje',
+            names='Concepto',
+            title='Distribución por Porcentaje',
+            hole=0.4,
+            color='Concepto',
+            color_discrete_map={'Médico': '#4CAF50', 'OSA': '#2196F3'}
+        )
+        fig_porcentajes.update_layout(height=300, showlegend=True)
+        fig_porcentajes.update_traces(textinfo='percent+label')
+        st.plotly_chart(fig_porcentajes, use_container_width=True)
+    
+    # Información detallada del cálculo
+    with st.expander("ℹ️ Detalles del cálculo completo", expanded=False):
         st.markdown(f"""
-        **Cálculo del promedio para {subespecialidad}:**
+        ### 📝 **Cálculos Detallados para {nombre_medico}**
         
+        **1. Promedio de la Subespecialidad ({subespecialidad}):**
         ```
         Suma total de facturación en {subespecialidad}: €{promedio_info['suma_total']:,.2f}
         Número de médicos que facturaron: {promedio_info['num_medicos']}
         Promedio = €{promedio_info['suma_total']:,.2f} ÷ {promedio_info['num_medicos']} = €{kpis['promedio_subespecialidad']:,.2f}
         ```
         
-        **{nombre_medico} facturó: €{kpis['importe_hhmm_total']:,.2f}**
+        **2. Posición del Médico:**
+        - **{nombre_medico}** facturó: **€{kpis['importe_hhmm_total']:,.2f}**
+        - Promedio de la subespecialidad: **€{kpis['promedio_subespecialidad']:,.2f}**
+        - **Resultado:** {'POR ENCIMA' if kpis['por_encima_promedio'] else 'POR DEBAJO'} del promedio
+        - **Tipo de médico:** {kpis['tipo_medico']}
         
-        **Resultado:** {'POR ENCIMA' if kpis['por_encima_promedio'] else 'POR DEBAJO'} del promedio
-        **Tipo de médico:** {kpis['tipo_medico']}
-        **Porcentaje aplicado:** {kpis['porcentaje_cobrar']:.1f}%
+        **3. Cálculo de Porcentajes:**
+        - **% a Cobrar (Médico):** {kpis['porcentaje_cobrar']:.1f}%
+          *(Basado en reglas: {kpis['tipo_medico']} {'por encima' if kpis['por_encima_promedio'] else 'por debajo'} del promedio)*
+        - **% OSA:** 100% - {kpis['porcentaje_cobrar']:.1f}% = **{kpis['porcentaje_osa']:.1f}%**
+        
+        **4. Cálculo de Montos:**
+        - **Importe HHMM Total:** €{kpis['importe_hhmm_total']:,.2f}
+        - **Total a Cobrar (Médico):** €{kpis['importe_hhmm_total']:,.2f} × {kpis['porcentaje_cobrar']:.1f}% = **€{kpis['total_a_cobrar']:,.2f}**
+        - **A Cobrar OSA:** €{kpis['importe_hhmm_total']:,.2f} - €{kpis['total_a_cobrar']:,.2f} = **€{kpis['a_cobrar_osa']:,.2f}**
+        
+        **5. Verificación:**
+        - €{kpis['total_a_cobrar']:,.2f} + €{kpis['a_cobrar_osa']:,.2f} = €{kpis['importe_hhmm_total']:,.2f} ✓
+        - {kpis['porcentaje_cobrar']:.1f}% + {kpis['porcentaje_osa']:.1f}% = 100% ✓
         """)
     
     st.markdown("---")
@@ -228,6 +322,11 @@ def crear_dashboard_medico(df_medico, kpis, promedio_info):
         
         # Aplanar columnas multi-index
         prestacion_analisis.columns = ['Descripción de Prestación', 'Cantidad', 'Monto Total']
+        
+        # Calcular distribución porcentual para el médico
+        prestacion_analisis['% Médico'] = (prestacion_analisis['Monto Total'] / kpis['importe_hhmm_total']) * 100
+        prestacion_analisis['Médico Recibe'] = prestacion_analisis['Monto Total'] * (kpis['porcentaje_cobrar'] / 100)
+        prestacion_analisis['OSA Recibe'] = prestacion_analisis['Monto Total'] * (kpis['porcentaje_osa'] / 100)
         
         # Crear dos columnas para las métricas
         col_metrics1, col_metrics2 = st.columns(2)
@@ -250,10 +349,10 @@ def crear_dashboard_medico(df_medico, kpis, promedio_info):
                     delta=None
                 )
         
-        # Gráfico de pastel para distribución por prestación
-        col_chart1, col_chart2 = st.columns(2)
+        # Gráficos de distribución por prestación
+        col_chart3, col_chart4 = st.columns(2)
         
-        with col_chart1:
+        with col_chart3:
             # Gráfico de cantidad
             fig_cantidad = px.pie(
                 prestacion_analisis,
@@ -266,20 +365,26 @@ def crear_dashboard_medico(df_medico, kpis, promedio_info):
             fig_cantidad.update_layout(height=400)
             st.plotly_chart(fig_cantidad, use_container_width=True)
         
-        with col_chart2:
-            # Gráfico de monto
-            fig_monto = px.pie(
-                prestacion_analisis,
-                values='Monto Total',
-                names='Descripción de Prestación',
-                title='Distribución de Monto por Prestación',
-                hole=0.4,
-                color_discrete_sequence=px.colors.sequential.Plasma
+        with col_chart4:
+            # Gráfico de monto con distribución Médico/OSA
+            fig_distribucion = go.Figure(data=[
+                go.Bar(name='Médico', x=prestacion_analisis['Descripción de Prestación'], 
+                      y=prestacion_analisis['Médico Recibe'], marker_color='#4CAF50'),
+                go.Bar(name='OSA', x=prestacion_analisis['Descripción de Prestación'], 
+                      y=prestacion_analisis['OSA Recibe'], marker_color='#2196F3')
+            ])
+            
+            fig_distribucion.update_layout(
+                title='Distribución Médico vs OSA por Prestación',
+                barmode='stack',
+                height=400,
+                xaxis_title='Tipo de Prestación',
+                yaxis_title='Monto (€)',
+                legend_title='Destino'
             )
-            fig_monto.update_layout(height=400)
-            st.plotly_chart(fig_monto, use_container_width=True)
+            st.plotly_chart(fig_distribucion, use_container_width=True)
         
-        # Tabla detallada
+        # Tabla detallada con distribución
         st.markdown("**📊 Tabla Resumen por Tipo de Prestación**")
         prestacion_analisis['Monto Promedio'] = prestacion_analisis['Monto Total'] / prestacion_analisis['Cantidad']
         
@@ -303,6 +408,21 @@ def crear_dashboard_medico(df_medico, kpis, promedio_info):
                     "Promedio por Unidad (€)",
                     format="€%.2f",
                     help="Monto Total / Unidades"
+                ),
+                "% Médico": st.column_config.NumberColumn(
+                    "% del Total",
+                    format="%.1f%%",
+                    help="Porcentaje del monto total"
+                ),
+                "Médico Recibe": st.column_config.NumberColumn(
+                    "Médico Recibe (€)",
+                    format="€%.2f",
+                    help="Monto que recibe el médico"
+                ),
+                "OSA Recibe": st.column_config.NumberColumn(
+                    "OSA Recibe (€)",
+                    format="€%.2f",
+                    help="Monto que recibe OSA"
                 )
             }
         )
@@ -338,6 +458,9 @@ def crear_dashboard_medico(df_medico, kpis, promedio_info):
                     'Importe Total': 'sum'
                 }).reset_index()
                 prestacion_resumen.columns = ['Prestación', 'Unidades', 'Monto HHMM Total', 'Monto HHMM Promedio', 'Monto Total']
+                prestacion_resumen['% Médico'] = (prestacion_resumen['Monto HHMM Total'] / kpis['importe_hhmm_total']) * 100
+                prestacion_resumen['Médico Recibe'] = prestacion_resumen['Monto HHMM Total'] * (kpis['porcentaje_cobrar'] / 100)
+                prestacion_resumen['OSA Recibe'] = prestacion_resumen['Monto HHMM Total'] * (kpis['porcentaje_osa'] / 100)
                 prestacion_resumen.to_excel(writer, index=False, sheet_name='Resumen_Prestaciones')
             
             # Hoja 3: KPIs
@@ -350,10 +473,25 @@ def crear_dashboard_medico(df_medico, kpis, promedio_info):
                 'Importe HHMM Total': kpis['importe_hhmm_total'],
                 'Promedio Subespecialidad': kpis['promedio_subespecialidad'],
                 'Posición vs Promedio': 'Por encima' if kpis['por_encima_promedio'] else 'Por debajo',
-                '% a Cobrar': kpis['porcentaje_cobrar'],
-                'Total a Cobrar': kpis['total_a_cobrar']
+                '% a Cobrar (Médico)': kpis['porcentaje_cobrar'],
+                '% OSA': kpis['porcentaje_osa'],
+                'Total a Cobrar (Médico)': kpis['total_a_cobrar'],
+                'A Cobrar OSA': kpis['a_cobrar_osa']
             }])
             kpis_df.to_excel(writer, index=False, sheet_name='KPIs')
+            
+            # Hoja 4: Distribución general
+            distribucion_df = pd.DataFrame({
+                'Concepto': ['Total', 'Médico', 'OSA'],
+                'Monto (€)': [kpis['importe_hhmm_total'], kpis['total_a_cobrar'], kpis['a_cobrar_osa']],
+                'Porcentaje': [100, kpis['porcentaje_cobrar'], kpis['porcentaje_osa']],
+                'Descripción': [
+                    'Importe HHMM Total',
+                    f'Médico recibe ({kpis["porcentaje_cobrar"]:.1f}%)',
+                    f'OSA recibe ({kpis["porcentaje_osa"]:.1f}%)'
+                ]
+            })
+            distribucion_df.to_excel(writer, index=False, sheet_name='Distribución')
         
         output.seek(0)
         
@@ -364,6 +502,9 @@ def crear_dashboard_medico(df_medico, kpis, promedio_info):
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True
         )
+
+# [El resto del código permanece igual desde aquí...]
+# Solo necesito copiar la función main() completa
 
 def main():
     # Sidebar simplificado
@@ -556,62 +697,75 @@ def main():
         3. **Selecciona un médico** de la lista
         4. **Visualiza el análisis completo** con todos los KPIs
         
-        ### 📊 **KPIs que se generan por médico:**
+        ### 📊 **KPIs que se generan por médico (8 KPIs total):**
         
-        #### **Métricas Básicas:**
+        #### **Fila 1 - Registros e Importes:**
         - **Total Registros**: Número de servicios prestados
         - **Importe Total**: Suma del importe al 100%
+        
+        #### **Fila 2 - Facturación y Comparación:**
         - **Importe HHMM Total**: Suma del Importe HHMM
+        - **Promedio Subespecialidad**: Comparativa con otros médicos
         
-        #### **Análisis Comparativo:**
-        - **Promedio de la Subespecialidad**: 
-          ```
-          (Suma total de facturación de la subespecialidad) / (Número de médicos que facturaron)
-          ```
+        #### **Fila 3 - Porcentajes:**
+        - **% a Cobrar (Médico)**: Porcentaje que recibe el médico
+        - **% OSA**: Porcentaje que recibe OSA (100% - % Médico)
         
-        #### **Cálculo de "A Cobrar":**
-        - **% a Cobrar**: Determina el porcentaje según:
-          - **CONSULTOR por encima del promedio**: 92%
-          - **CONSULTOR por debajo del promedio**: 88%
-          - **ESPECIALISTA por encima del promedio**: 90%
-          - **ESPECIALISTA por debajo del promedio**: 85%
+        #### **Fila 4 - Montos a Cobrar:**
+        - **Total a Cobrar (Médico)**: Monto que recibe el médico
+        - **A Cobrar OSA**: Monto que recibe OSA
         
-        - **Total a Cobrar**: `Importe HHMM Total × % a Cobrar`
+        ### 📋 **Nuevos KPIs Agregados:**
+        
+        **1. % OSA:**
+        ```
+        % OSA = 100% - % a Cobrar (Médico)
+        Ejemplo: Si médico recibe 92%, OSA recibe 8%
+        ```
+        
+        **2. A Cobrar OSA:**
+        ```
+        A Cobrar OSA = Importe HHMM Total - Total a Cobrar (Médico)
+        Ejemplo: €1,000 total - €920 médico = €80 OSA
+        ```
         
         ### 📋 **Análisis por Tipo de Prestación:**
         - **Unidades por tipo de prestación** (cantidad de servicios)
         - **Monto facturado por tipo de prestación**
-        - **Gráficos de distribución**
-        - **Tabla resumen detallada**
+        - **Distribución Médico vs OSA** por cada prestación
+        - **Gráficos de distribución** interactivos
         
         ### 📥 **Funcionalidades adicionales:**
-        - **Descargar reporte completo** en Excel
+        - **Descargar reporte completo** en Excel (4 hojas)
         - **Ver todos los registros** del médico
-        - **Detalles del cálculo** del promedio
+        - **Detalles del cálculo** completo
         
         *Si no cargas un archivo, se usarán datos de ejemplo con 3 médicos diferentes.*
         """)
         
         # Mostrar ejemplo de datos disponibles
-        with st.expander("📝 Ejemplo de datos disponibles", expanded=False):
+        with st.expander("📝 Ejemplo de cálculo con nuevos KPIs", expanded=False):
             st.markdown("""
-            **Ejemplo de cálculo para "HOMBRO Y CODO":**
+            **Ejemplo para "FALLONE, JAN" (CONSULTOR por encima del promedio):**
             
-            - **Médico 1 (FALLONE, JAN)**: Facturó €2,000
-            - **Médico 2 (ALCANTARA)**: Facturó €1,500
-            - **Médico 3 (RIUS)**: Facturó €2,500
+            **Datos:**
+            - Importe HHMM Total: €2,000.00
+            - Promedio subespecialidad: €1,800.00
+            - Tipo: CONSULTOR (por encima → 92%)
             
-            **Cálculo del promedio:**
-            ```
-            Suma total = €2,000 + €1,500 + €2,500 = €6,000
-            Número de médicos = 3
-            Promedio = €6,000 ÷ 3 = €2,000
-            ```
+            **Cálculos:**
+            1. **% a Cobrar (Médico):** 92%
+            2. **% OSA:** 100% - 92% = **8%**
+            3. **Total a Cobrar (Médico):** €2,000 × 92% = **€1,840**
+            4. **A Cobrar OSA:** €2,000 - €1,840 = **€160**
             
-            **Cálculo de "A Cobrar" para FALLONE, JAN (€2,000):**
-            - Facturó €2,000, igual al promedio (€2,000)
-            - Es CONSULTOR → Se considera "por encima" → 92%
-            - **A Cobrar** = €2,000 × 92% = **€1,840**
+            **Verificación:**
+            - €1,840 + €160 = €2,000 ✓
+            - 92% + 8% = 100% ✓
+            
+            **Distribución final:**
+            - **Médico recibe:** €1,840 (92%)
+            - **OSA recibe:** €160 (8%)
             """)
 
 if __name__ == "__main__":
