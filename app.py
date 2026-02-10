@@ -676,7 +676,7 @@ def main():
             crear_dashboard_medico(df_medico, kpis_medico, promedio_info)
     else:
         # Pantalla de inicio
-        st.markdown("""
+        st.markdown("
         ## 👨‍⚕️ Bienvenido al Dashboard de Análisis Médico Individual
         
         ### 📋 Instrucciones:
@@ -728,13 +728,9 @@ def main():
         - **Ver todos los registros** del médico
         - **Detalles del cálculo** completo
         
-        *Si no cargas un archivo, se usarán datos de ejemplo con 3 médicos diferentes.*
-        """)
+        ")
         
-        # Mostrar ejemplo de datos disponibles
-        with st.expander("📝 Ejemplo de cálculo con nuevos KPIs", expanded=False):
-            st.markdown("OK")
-            
+                   
 
 if __name__ == "__main__":
     main()
