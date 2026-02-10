@@ -714,7 +714,7 @@ def main():
         **2. A Cobrar OSA:**
         ```
         A Cobrar OSA = Importe HHMM Total - Total a Cobrar (Médico)
-        Ejemplo: €1,000 total - €920 médico = €80 OSA
+        Ejemplo: 1,000 total - 920 médico = 80 OSA
         ```
         
         ### 📋 **Análisis por Tipo de Prestación:**
