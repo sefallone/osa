@@ -739,7 +739,7 @@ def main():
             **Datos:**
             - Importe HHMM Total: 2,000.00
             - Promedio subespecialidad: 1,800.00
-            - Tipo: CONSULTOR (por encima → 92%)
+            - Tipo: CONSULTOR (por encima, 92%)
             
             **Cálculos:**
             1. **% a Cobrar (Médico):** 92%
