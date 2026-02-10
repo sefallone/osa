@@ -744,7 +744,7 @@ def main():
             **Cálculos:**
             1. **% a Cobrar (Médico):** 92%
             2. **% OSA:** 100% - 92% = **8%**
-            3. **Total a Cobrar (Médico):** 2,000 × 92% = **1,840**
+            3. **Total a Cobrar (Médico):** 2,000 "×" 92% = **1,840**
             4. **A Cobrar OSA:** 2,000 - 1,840 = **160**
             
             **Verificación:**
