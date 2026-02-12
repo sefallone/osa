@@ -1,23 +1,159 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-from datetime import datetime
+from datetime import datetime, date
 import plotly.express as px
 import plotly.graph_objects as go
 import io
+import os
+import json
+from pathlib import Path
+import hashlib
+import hmac
 
-# Configuración de la página
+# -------------------------------------------------------------------
+# CONFIGURACIÓN DE COLORES CORPORATIVOS
+# -------------------------------------------------------------------
+COLORES = {
+    "primary": "#153009",    # Verde oscuro - Color principal
+    "secondary": "#cbb26a",  # Dorado - Color secundario
+    "background": "#f8f9fa",
+    "text_dark": "#1e2e1e",
+    "text_light": "#ffffff",
+    "success": "#28a745",
+    "warning": "#ffc107",
+    "danger": "#dc3545",
+    "info": "#17a2b8"
+}
+
+# Configuración de la página con colores personalizados
 st.set_page_config(
-    page_title="Dashboard Médico - Análisis Individual",
-    page_icon="👨‍⚕️",
-    layout="wide"
+    page_title="OSA Medical Analytics",
+    page_icon="🏥",
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
-# Título de la aplicación
-st.title("👨‍⚕️ Dashboard de Análisis Médico Individual")
-st.markdown("---")
+# CSS personalizado con los colores corporativos
+st.markdown(f"""
+<style>
+    /* Colores principales */
+    :root {{
+        --primary-color: {COLORES['primary']};
+        --secondary-color: {COLORES['secondary']};
+        --background-color: {COLORES['background']};
+    }}
+    
+    /* Títulos con color primario */
+    h1, h2, h3 {{
+        color: {COLORES['primary']} !important;
+    }}
+    
+    /* Métricas personalizadas */
+    .stMetric {{
+        background-color: white;
+        padding: 15px;
+        border-radius: 10px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        border-left: 5px solid {COLORES['secondary']};
+    }}
+    
+    .stMetric label {{
+        color: {COLORES['primary']} !important;
+        font-weight: 600;
+    }}
+    
+    /* Botones */
+    .stButton > button {{
+        background-color: {COLORES['primary']};
+        color: white;
+        border: none;
+        border-radius: 5px;
+        padding: 10px 24px;
+        font-weight: 600;
+    }}
+    
+    .stButton > button:hover {{
+        background-color: {COLORES['secondary']};
+        color: {COLORES['primary']};
+    }}
+    
+    /* Sidebar */
+    .css-1d391kg {{
+        background-color: {COLORES['primary']};
+    }}
+    
+    /* Tabs */
+    .stTabs [data-baseweb="tab-list"] {{
+        gap: 8px;
+    }}
+    
+    .stTabs [data-baseweb="tab"] {{
+        background-color: white;
+        border-radius: 4px 4px 0px 0px;
+        padding: 10px 20px;
+        color: {COLORES['primary']};
+    }}
+    
+    .stTabs [aria-selected="true"] {{
+        background-color: {COLORES['secondary']} !important;
+        color: {COLORES['primary']} !important;
+    }}
+    
+    /* Cards personalizadas */
+    .custom-card {{
+        background: white;
+        padding: 20px;
+        border-radius: 10px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        margin-bottom: 20px;
+        border-top: 3px solid {COLORES['secondary']};
+    }}
+    
+    .metric-highlight {{
+        font-size: 24px;
+        font-weight: bold;
+        color: {COLORES['primary']};
+    }}
+</style>
+""", unsafe_allow_html=True)
 
-# Diccionario de profesionales con especialidad y tipo de médico
+# -------------------------------------------------------------------
+# DATOS DE USUARIOS (En producción, esto debería estar en GitHub Secrets o DB)
+# -------------------------------------------------------------------
+USUARIOS = {
+    "admin": {
+        "password": "admin123",  # Cambiar en producción
+        "nombre": "Administrador",
+        "rol": "admin",
+        "email": "admin@osa.com"
+    },
+    "fallone.jan": {
+        "password": "medico123",  # Cambiar en producción
+        "nombre": "Dr. Jan Fallone",
+        "rol": "medico",
+        "profesional": "FALLONE, JAN",
+        "email": "j.fallone@osa.com"
+    },
+    "ortega.juan": {
+        "password": "medico123",
+        "nombre": "Dr. Juan Pablo Ortega",
+        "rol": "medico",
+        "profesional": "ORTEGA RODRIGUEZ, JUAN PABLO",
+        "email": "jp.ortega@osa.com"
+    },
+    "esteban.ignacio": {
+        "password": "medico123",
+        "nombre": "Dr. Ignacio Esteban",
+        "rol": "medico",
+        "profesional": "ESTEBAN FELIU, IGNACIO",
+        "email": "i.esteban@osa.com"
+    }
+}
+
+# -------------------------------------------------------------------
+# PROFESIONALES_INFO (tu diccionario original)
+# -------------------------------------------------------------------
 PROFESIONALES_INFO = {
     "FALLONE, JAN": {"especialidad": "HOMBRO Y CODO", "tipo": "CONSULTOR"},
     "ORTEGA RODRIGUEZ, JUAN PABLO": {"especialidad": "PIE Y TOBILLO", "tipo": "CONSULTOR"},
@@ -29,11 +165,125 @@ PROFESIONALES_INFO = {
     "MAIO MÉNDEZ, TOMAS EDUARDO": {"especialidad": "RODILLA", "tipo": "ESPECIALISTA"},
     "MONSONET VILLA, PABLO": {"especialidad": "RODILLA", "tipo": "CONSULTOR"},
     "PUIGDELLIVOL GRIFELL, JORDI": {"especialidad": "RODILLA", "tipo": "CONSULTOR"},
-    "CASACCIA, MARCELO AGUSTIN": {"especialidad": "RODILLa", "tipo": "CONSULTOR"}
+    "CASACCIA, MARCELO AGUSTIN": {"especialidad": "RODILLA", "tipo": "CONSULTOR"}
 }
 
+# -------------------------------------------------------------------
+# GESTIÓN DE DATOS PERSISTENTES (Simula base de datos con archivos)
+# -------------------------------------------------------------------
+class DataManager:
+    """Gestiona el almacenamiento persistente de datos"""
+    
+    @staticmethod
+    def get_data_path():
+        """Obtiene la ruta para guardar datos"""
+        # En Streamlit Cloud, usamos el directorio persistente
+        if os.path.exists('/mount/src'):
+            # En producción (Streamlit Cloud)
+            data_dir = '/mount/src/medical_dashboard/data'
+        else:
+            # En local
+            data_dir = './data'
+        
+        Path(data_dir).mkdir(parents=True, exist_ok=True)
+        return data_dir
+    
+    @staticmethod
+    def save_dataframe(df, filename='medical_data.parquet'):
+        """Guarda el DataFrame de manera persistente"""
+        try:
+            path = os.path.join(DataManager.get_data_path(), filename)
+            df.to_parquet(path, index=False)
+            return True
+        except Exception as e:
+            st.error(f"Error guardando datos: {e}")
+            return False
+    
+    @staticmethod
+    def load_dataframe(filename='medical_data.parquet'):
+        """Carga el DataFrame guardado"""
+        try:
+            path = os.path.join(DataManager.get_data_path(), filename)
+            if os.path.exists(path):
+                return pd.read_parquet(path)
+            return None
+        except Exception as e:
+            st.error(f"Error cargando datos: {e}")
+            return None
+    
+    @staticmethod
+    def get_upload_metadata():
+        """Obtiene metadatos de la última carga"""
+        try:
+            path = os.path.join(DataManager.get_data_path(), 'upload_metadata.json')
+            if os.path.exists(path):
+                with open(path, 'r') as f:
+                    return json.load(f)
+            return None
+        except:
+            return None
+    
+    @staticmethod
+    def save_upload_metadata(metadata):
+        """Guarda metadatos de la carga"""
+        try:
+            path = os.path.join(DataManager.get_data_path(), 'upload_metadata.json')
+            with open(path, 'w') as f:
+                json.dump(metadata, f)
+            return True
+        except:
+            return False
+
+# -------------------------------------------------------------------
+# AUTENTICACIÓN
+# -------------------------------------------------------------------
+def check_password():
+    """Sistema de autenticación simplificado"""
+    
+    def login_form():
+        with st.form("Credentials"):
+            st.markdown(f"""
+            <div style='text-align: center; padding: 20px;'>
+                <h2 style='color: {COLORES['primary']};'>🏥 OSA Medical Analytics</h2>
+                <p style='color: {COLORES['primary']};'>Sistema de Análisis Médico</p>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            username = st.text_input("Usuario")
+            password = st.text_input("Contraseña", type="password")
+            submitted = st.form_submit_button("Iniciar Sesión", use_container_width=True)
+            
+            if submitted:
+                if username in USUARIOS and password == USUARIOS[username]["password"]:
+                    st.session_state["authentication_status"] = True
+                    st.session_state["username"] = username
+                    st.session_state["user_info"] = USUARIOS[username]
+                    st.rerun()
+                else:
+                    st.error("Usuario o contraseña incorrectos")
+    
+    if "authentication_status" not in st.session_state:
+        st.session_state["authentication_status"] = False
+    
+    if not st.session_state["authentication_status"]:
+        login_form()
+        return False
+    else:
+        return True
+
+def logout():
+    """Cerrar sesión"""
+    if st.sidebar.button("🚪 Cerrar Sesión", use_container_width=True):
+        for key in ["authentication_status", "username", "user_info"]:
+            if key in st.session_state:
+                del st.session_state[key]
+        st.rerun()
+
+# -------------------------------------------------------------------
+# FUNCIONES DE PROCESAMIENTO (tus funciones originales mejoradas)
+# -------------------------------------------------------------------
 def procesar_datos(df):
-    """Procesa el DataFrame cargado"""
+    """Procesa el DataFrame cargado (tu función original mejorada)"""
     df_procesado = df.copy()
     
     # Convertir columnas de fecha
@@ -61,10 +311,14 @@ def procesar_datos(df):
         df_procesado['Subespecialidad'] = df_procesado['Profesional'].map(
             lambda x: PROFESIONALES_INFO.get(str(x).strip(), {}).get('especialidad', 'NO ESPECIFICADA')
         )
-        
         df_procesado['Tipo Médico'] = df_procesado['Profesional'].map(
             lambda x: PROFESIONALES_INFO.get(str(x).strip(), {}).get('tipo', 'NO ESPECIFICADO')
         )
+    
+    # Añadir mes y año para filtros
+    df_procesado['Mes'] = df_procesado['Fecha del Servicio'].dt.month
+    df_procesado['Año'] = df_procesado['Fecha del Servicio'].dt.year
+    df_procesado['Mes-Año'] = df_procesado['Fecha del Servicio'].dt.strftime('%Y-%m')
     
     return df_procesado
 
@@ -73,19 +327,13 @@ def calcular_promedio_subespecialidad(df, subespecialidad):
     if 'Subespecialidad' not in df.columns or subespecialidad not in df['Subespecialidad'].values:
         return 0, 0, 0
     
-    # Filtrar por subespecialidad
     df_especialidad = df[df['Subespecialidad'] == subespecialidad]
     
     if df_especialidad.empty:
         return 0, 0, 0
     
-    # Suma total del Importe HHMM para esa subespecialidad
     suma_total = df_especialidad['Importe HHMM'].sum()
-    
-    # Número de médicos únicos que facturaron en esa subespecialidad
     num_medicos = df_especialidad['Profesional'].nunique()
-    
-    # Calcular promedio
     promedio = suma_total / num_medicos if num_medicos > 0 else 0
     
     return promedio, suma_total, num_medicos
@@ -95,15 +343,12 @@ def calcular_a_cobrar_individual(df_medico, promedio_subespecialidad):
     if df_medico.empty:
         return None
     
-    # Estadísticas básicas
     total_registros = len(df_medico)
     importe_total = df_medico['Importe Total'].sum() if 'Importe Total' in df_medico.columns else 0
     importe_hhmm_total = df_medico['Importe HHMM'].sum() if 'Importe HHMM' in df_medico.columns else 0
     
-    # Obtener tipo de médico
     tipo_medico = df_medico['Tipo Médico'].iloc[0] if 'Tipo Médico' in df_medico.columns else 'NO ESPECIFICADO'
     
-    # Calcular % a cobrar y total a cobrar
     por_encima_promedio = importe_hhmm_total >= promedio_subespecialidad
     
     if tipo_medico == 'CONSULTOR':
@@ -111,15 +356,10 @@ def calcular_a_cobrar_individual(df_medico, promedio_subespecialidad):
     elif tipo_medico == 'ESPECIALISTA':
         porcentaje_cobrar = 0.90 if por_encima_promedio else 0.85
     else:
-        porcentaje_cobrar = 0.90  # Por defecto
+        porcentaje_cobrar = 0.90
     
     total_a_cobrar = importe_hhmm_total * porcentaje_cobrar
-    
-    # CALCULAR NUEVOS KPIs
-    # % OSA = 100% - % a Cobrar
     porcentaje_osa = 100 - (porcentaje_cobrar * 100)
-    
-    # A Cobrar OSA = Importe HHMM Total - Total a Cobrar
     a_cobrar_osa = importe_hhmm_total - total_a_cobrar
     
     return {
@@ -127,603 +367,706 @@ def calcular_a_cobrar_individual(df_medico, promedio_subespecialidad):
         'importe_total': importe_total,
         'importe_hhmm_total': importe_hhmm_total,
         'promedio_subespecialidad': promedio_subespecialidad,
-        'porcentaje_cobrar': porcentaje_cobrar * 100,  # En porcentaje
+        'porcentaje_cobrar': porcentaje_cobrar * 100,
         'total_a_cobrar': total_a_cobrar,
-        'porcentaje_osa': porcentaje_osa,  # NUEVO KPI
-        'a_cobrar_osa': a_cobrar_osa,      # NUEVO KPI
+        'porcentaje_osa': porcentaje_osa,
+        'a_cobrar_osa': a_cobrar_osa,
         'tipo_medico': tipo_medico,
         'por_encima_promedio': por_encima_promedio
     }
 
-def crear_dashboard_medico(df_medico, kpis, promedio_info):
-    """Crea el dashboard específico para un médico"""
+def calcular_dashboard_general(df):
+    """Calcula métricas generales para el dashboard del admin"""
+    if df is None or df.empty:
+        return None
     
-    # Header del médico
-    nombre_medico = df_medico['Profesional'].iloc[0] if 'Profesional' in df_medico.columns else 'Médico'
-    subespecialidad = df_medico['Subespecialidad'].iloc[0] if 'Subespecialidad' in df_medico.columns else 'No especificada'
+    total_medicos = df['Profesional'].nunique()
+    total_registros = len(df)
+    importe_hhmm_total = df['Importe HHMM'].sum()
+    importe_total_vithas = df['Importe Total'].sum()
     
-    st.header(f"👨‍⚕️ {nombre_medico}")
-    st.subheader(f"Subespecialidad: {subespecialidad}")
+    # Distribución por subespecialidad
+    distribucion_subesp = df.groupby('Subespecialidad').agg({
+        'Importe HHMM': ['sum', 'count', 'nunique']
+    }).reset_index()
+    distribucion_subesp.columns = ['Subespecialidad', 'Monto_Total', 'Registros', 'Num_Medicos']
     
-    # KPIs en 4 columnas
+    # Top 5 médicos
+    top_medicos = df.groupby('Profesional').agg({
+        'Importe HHMM': 'sum',
+        'Importe Total': 'sum',
+        'Fecha del Servicio': 'count'
+    }).reset_index()
+    top_medicos.columns = ['Profesional', 'Importe_HHMM', 'Importe_Total', 'Registros']
+    top_medicos = top_medicos.sort_values('Importe_HHMM', ascending=False).head(5)
+    
+    # KPIs calculados
+    total_pagar_medicos = 0
+    total_osa_retiene = 0
+    
+    for medico in df['Profesional'].unique():
+        df_medico = df[df['Profesional'] == medico]
+        subesp = df_medico['Subespecialidad'].iloc[0]
+        promedio, _, _ = calcular_promedio_subespecialidad(df, subesp)
+        kpis = calcular_a_cobrar_individual(df_medico, promedio)
+        if kpis:
+            total_pagar_medicos += kpis['total_a_cobrar']
+            total_osa_retiene += kpis['a_cobrar_osa']
+    
+    return {
+        'total_medicos': total_medicos,
+        'total_registros': total_registros,
+        'importe_hhmm_total': importe_hhmm_total,
+        'importe_total_vithas': importe_total_vithas,
+        'total_pagar_medicos': total_pagar_medicos,
+        'total_osa_retiene': total_osa_retiene,
+        'distribucion_subesp': distribucion_subesp,
+        'top_medicos': top_medicos
+    }
+
+# -------------------------------------------------------------------
+# DASHBOARD ADMINISTRADOR
+# -------------------------------------------------------------------
+def dashboard_admin(df):
+    """Dashboard completo para administradores"""
+    
+    st.markdown(f"""
+    <div class='custom-card'>
+        <h2 style='color: {COLORES['primary']}; margin-bottom: 0;'>📊 Dashboard Ejecutivo OSA</h2>
+        <p style='color: {COLORES['secondary']};'>Análisis global de rendimiento médico</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Filtros globales
+    col_f1, col_f2, col_f3, col_f4 = st.columns([2,2,2,1])
+    
+    with col_f1:
+        if 'Fecha del Servicio' in df.columns:
+            min_date = df['Fecha del Servicio'].min().date()
+            max_date = df['Fecha del Servicio'].max().date()
+            fecha_range = st.date_input(
+                "📅 Rango de Fechas",
+                value=(min_date, max_date),
+                min_value=min_date,
+                max_value=max_date,
+                key="admin_fecha_range"
+            )
+    
+    with col_f2:
+        subespecialidades = ['TODAS'] + sorted(df['Subespecialidad'].unique().tolist())
+        subesp_selected = st.selectbox("🏥 Subespecialidad", subespecialidades, key="admin_subesp")
+    
+    with col_f3:
+        tipos_medico = ['TODOS'] + sorted(df['Tipo Médico'].unique().tolist())
+        tipo_selected = st.selectbox("👨‍⚕️ Tipo de Médico", tipos_medico, key="admin_tipo")
+    
+    with col_f4:
+        st.markdown("<br>", unsafe_allow_html=True)
+        aplicar_filtros = st.button("🔍 Aplicar Filtros", use_container_width=True)
+    
+    # Aplicar filtros
+    df_filtered = df.copy()
+    
+    if 'fecha_range' in locals() and len(fecha_range) == 2:
+        df_filtered = df_filtered[
+            (df_filtered['Fecha del Servicio'].dt.date >= fecha_range[0]) &
+            (df_filterred['Fecha del Servicio'].dt.date <= fecha_range[1])
+        ]
+    
+    if subesp_selected != 'TODAS':
+        df_filtered = df_filtered[df_filtered['Subespecialidad'] == subesp_selected]
+    
+    if tipo_selected != 'TODOS':
+        df_filtered = df_filtered[df_filtered['Tipo Médico'] == tipo_selected]
+    
+    # Calcular métricas generales
+    metricas = calcular_dashboard_general(df_filtered)
+    
+    if metricas:
+        # KPIs principales
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            st.markdown(f"""
+            <div class='stMetric'>
+                <label>👥 Médicos Activos</label>
+                <div class='metric-highlight'>{metricas['total_medicos']:,}</div>
+                <small>Periodo seleccionado</small>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with col2:
+            st.markdown(f"""
+            <div class='stMetric'>
+                <label>💰 Facturado Vithas</label>
+                <div class='metric-highlight'>€{metricas['importe_total_vithas']:,.2f}</div>
+                <small>Importe al 100%</small>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with col3:
+            st.markdown(f"""
+            <div class='stMetric'>
+                <label>💵 Cobrado OSA</label>
+                <div class='metric-highlight'>€{metricas['importe_hhmm_total']:,.2f}</div>
+                <small>Importe HHMM</small>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with col4:
+            st.markdown(f"""
+            <div class='stMetric'>
+                <label>📋 Total Servicios</label>
+                <div class='metric-highlight'>{metricas['total_registros']:,}</div>
+                <small>Registros procesados</small>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        st.markdown("---")
+        
+        # Segunda fila KPIs
+        col5, col6, col7, col8 = st.columns(4)
+        
+        with col5:
+            st.markdown(f"""
+            <div class='stMetric'>
+                <label>💳 Pago a Médicos</label>
+                <div class='metric-highlight'>€{metricas['total_pagar_medicos']:,.2f}</div>
+                <small>Total a liquidar</small>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with col6:
+            st.markdown(f"""
+            <div class='stMetric'>
+                <label>🏥 OSA Retiene</label>
+                <div class='metric-highlight'>€{metricas['total_osa_retiene']:,.2f}</div>
+                <small>Margen OSA</small>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with col7:
+            margen = (metricas['total_osa_retiene'] / metricas['importe_hhmm_total'] * 100) if metricas['importe_hhmm_total'] > 0 else 0
+            st.markdown(f"""
+            <div class='stMetric'>
+                <label>📊 Margen OSA</label>
+                <div class='metric-highlight'>{margen:.1f}%</div>
+                <small>Sobre HHMM</small>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with col8:
+            st.markdown(f"""
+            <div class='stMetric'>
+                <label>📈 Promedio/Médico</label>
+                <div class='metric-highlight'>€{metricas['importe_hhmm_total']/metricas['total_medicos']:,.2f}</div>
+                <small>Facturación media</small>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        st.markdown("---")
+        
+        # Gráficos y análisis
+        col_g1, col_g2 = st.columns(2)
+        
+        with col_g1:
+            # Distribución por subespecialidad
+            fig_subesp = px.bar(
+                metricas['distribucion_subesp'],
+                x='Subespecialidad',
+                y='Monto_Total',
+                title='💰 Facturación por Subespecialidad',
+                color='Subespecialidad',
+                color_discrete_sequence=[COLORES['secondary'], COLORES['primary']],
+                text_auto='.2s'
+            )
+            fig_subesp.update_layout(
+                height=400,
+                title_x=0.5,
+                showlegend=False,
+                plot_bgcolor='white'
+            )
+            fig_subesp.update_traces(
+                texttemplate='€%{text:,.0f}',
+                textposition='outside',
+                marker_line_color=COLORES['primary'],
+                marker_line_width=1.5,
+                opacity=0.8
+            )
+            st.plotly_chart(fig_subesp, use_container_width=True)
+        
+        with col_g2:
+            # Top 5 médicos
+            fig_top = px.bar(
+                metricas['top_medicos'],
+                x='Importe_HHMM',
+                y='Profesional',
+                orientation='h',
+                title='🏆 Top 5 Médicos por Facturación',
+                color='Importe_HHMM',
+                color_continuous_scale=[COLORES['secondary'], COLORES['primary']],
+                text_auto='.2s'
+            )
+            fig_top.update_layout(
+                height=400,
+                title_x=0.5,
+                plot_bgcolor='white'
+            )
+            fig_top.update_traces(
+                texttemplate='€%{text:,.0f}',
+                textposition='outside'
+            )
+            st.plotly_chart(fig_top, use_container_width=True)
+        
+        # Tabla de médicos con KPIs individuales
+        st.markdown("---")
+        st.subheader("📋 Análisis Individual por Médico")
+        
+        medicos_data = []
+        for medico in df_filtered['Profesional'].unique():
+            df_med = df_filtered[df_filtered['Profesional'] == medico]
+            subesp = df_med['Subespecialidad'].iloc[0]
+            tipo = df_med['Tipo Médico'].iloc[0]
+            promedio, _, _ = calcular_promedio_subespecialidad(df_filtered, subesp)
+            kpis = calcular_a_cobrar_individual(df_med, promedio)
+            
+            if kpis:
+                medicos_data.append({
+                    'Profesional': medico,
+                    'Subespecialidad': subesp,
+                    'Tipo': tipo,
+                    'Registros': kpis['total_registros'],
+                    'Facturado HHMM': kpis['importe_hhmm_total'],
+                    'Promedio Subesp': kpis['promedio_subespecialidad'],
+                    '% Cobrar': f"{kpis['porcentaje_cobrar']:.1f}%",
+                    'A Cobrar': kpis['total_a_cobrar'],
+                    'OSA Retiene': kpis['a_cobrar_osa'],
+                    '% OSA': f"{kpis['porcentaje_osa']:.1f}%"
+                })
+        
+        df_medicos = pd.DataFrame(medicos_data)
+        
+        st.dataframe(
+            df_medicos,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Profesional": "Médico",
+                "Subespecialidad": "Subespecialidad",
+                "Tipo": "Tipo",
+                "Registros": st.column_config.NumberColumn("Registros", format="%d"),
+                "Facturado HHMM": st.column_config.NumberColumn("Facturado HHMM (€)", format="€%.2f"),
+                "Promedio Subesp": st.column_config.NumberColumn("Promedio Subesp (€)", format="€%.2f"),
+                "% Cobrar": "% Médico",
+                "A Cobrar": st.column_config.NumberColumn("A Cobrar (€)", format="€%.2f"),
+                "OSA Retiene": st.column_config.NumberColumn("OSA Retiene (€)", format="€%.2f"),
+                "% OSA": "% OSA"
+            }
+        )
+
+# -------------------------------------------------------------------
+# DASHBOARD MÉDICO (tu función original adaptada)
+# -------------------------------------------------------------------
+def dashboard_medico(df, profesional_nombre):
+    """Dashboard específico para médicos"""
+    
+    # Filtrar datos del médico
+    df_medico = df[df['Profesional'] == profesional_nombre].copy()
+    
+    if df_medico.empty:
+        st.warning("No hay datos disponibles para este médico en el período actual.")
+        return
+    
+    # Obtener subespecialidad y calcular promedios
+    subespecialidad = df_medico['Subespecialidad'].iloc[0]
+    promedio_subespecialidad, suma_total, num_medicos = calcular_promedio_subespecialidad(df, subespecialidad)
+    
+    # Calcular KPIs
+    kpis = calcular_a_cobrar_individual(df_medico, promedio_subespecialidad)
+    
+    if not kpis:
+        st.error("Error calculando KPIs")
+        return
+    
+    # Información de metadatos de carga
+    metadata = DataManager.get_upload_metadata()
+    
+    # Header personalizado
+    st.markdown(f"""
+    <div class='custom-card' style='background: linear-gradient(135deg, {COLORES['primary']} 0%, {COLORES['primary']}ee 100%);'>
+        <h2 style='color: white !important; margin-bottom: 5px;'>👨‍⚕️ {profesional_nombre}</h2>
+        <p style='color: {COLORES['secondary']} !important; font-size: 18px; margin-bottom: 0;'>
+            {subespecialidad} • {kpis['tipo_medico']}
+        </p>
+        <p style='color: rgba(255,255,255,0.8); font-size: 14px; margin-top: 10px;'>
+            📅 Última actualización: {metadata.get('fecha', 'No disponible') if metadata else 'No disponible'}
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # KPIs principales con diseño mejorado
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        st.metric(
-            "💰 Facturado x Vithas",
-            f"€{kpis['importe_total']:,.2f}",
-            help="Importe total calculado al 100%"
-        )
-            
-    with col2:
-        st.metric(
-            "💵 Cobrado x OSA",
-            f"€{kpis['importe_hhmm_total']:,.2f}",
-            help="Descontados % Vithas"
-        )
-          
-    with col3:
-        # Mostrar si está por encima o por debajo del promedio
-        if kpis['por_encima_promedio']:
-            delta_text = "↑ Por encima"
-            delta_color = "normal"
-        else:
-            delta_text = "↓ Por debajo"
-            delta_color = "inverse"
-        
-        st.metric(
-            "📈 Promedio Subespecialidad",
-            f"€{kpis['promedio_subespecialidad']:,.2f}",
-            delta=delta_text,
-            delta_color=delta_color,
-            help=f"Promedio de {subespecialidad}: €{promedio_info['suma_total']:,.2f} / {promedio_info['num_medicos']} médicos"
-        )
-
-    with col4:
-        st.metric(
-            "📊 Total Registros",
-            f"{kpis['total_registros']:,}",
-            help="Número total de servicios prestados"
-        )
+        st.markdown(f"""
+        <div class='stMetric'>
+            <label style='color: {COLORES['primary']};'>💰 Facturado x Vithas</label>
+            <div style='font-size: 28px; font-weight: bold; color: {COLORES['primary']};'>
+                €{kpis['importe_total']:,.2f}
+            </div>
+            <small>Importe total al 100%</small>
+        </div>
+        """, unsafe_allow_html=True)
     
-    # Segunda fila de KPIs
-    col5, col6 = st.columns(2)
+    with col2:
+        st.markdown(f"""
+        <div class='stMetric'>
+            <label style='color: {COLORES['primary']};'>💵 Cobrado x OSA</label>
+            <div style='font-size: 28px; font-weight: bold; color: {COLORES['primary']};'>
+                €{kpis['importe_hhmm_total']:,.2f}
+            </div>
+            <small>Descontado % Vithas</small>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col3:
+        delta_color = "normal" if kpis['por_encima_promedio'] else "inverse"
+        delta_text = "↑ Por encima" if kpis['por_encima_promedio'] else "↓ Por debajo"
+        
+        st.markdown(f"""
+        <div class='stMetric'>
+            <label style='color: {COLORES['primary']};'>📈 Promedio {subespecialidad}</label>
+            <div style='font-size: 28px; font-weight: bold; color: {COLORES['primary']};'>
+                €{kpis['promedio_subespecialidad']:,.2f}
+            </div>
+            <small style='color: {"#28a745" if kpis["por_encima_promedio"] else "#dc3545"};'>{delta_text}</small>
+            <br>
+            <small>vs tu facturación: €{kpis['importe_hhmm_total']:,.2f}</small>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col4:
+        st.markdown(f"""
+        <div class='stMetric'>
+            <label style='color: {COLORES['primary']};'>📊 Total Servicios</label>
+            <div style='font-size: 28px; font-weight: bold; color: {COLORES['primary']};'>
+                {kpis['total_registros']:,}
+            </div>
+            <small>Registros en el período</small>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    # Segunda fila
+    col5, col6, col7, col8 = st.columns(4)
     
     with col5:
-        st.metric(
-            "📋 % a Cobrar (Médico)",
-            f"{kpis['porcentaje_cobrar']:.1f}%",
-            help=f"{kpis['tipo_medico']} {'por encima' if kpis['por_encima_promedio'] else 'por debajo'} del promedio"
-        )
+        st.markdown(f"""
+        <div class='stMetric'>
+            <label style='color: {COLORES['primary']};'>📋 % a Cobrar (Médico)</label>
+            <div style='font-size: 28px; font-weight: bold; color: {COLORES['primary']};'>
+                {kpis['porcentaje_cobrar']:.1f}%
+            </div>
+            <small>{kpis['tipo_medico']} {'por encima' if kpis['por_encima_promedio'] else 'por debajo'}</small>
+        </div>
+        """, unsafe_allow_html=True)
     
     with col6:
-        # NUEVO KPI: % OSA
-        st.metric(
-            "🏥 % OSA",
-            f"{kpis['porcentaje_osa']:.1f}%",
-            help="Porcentaje para OSA = 100% - % a Cobrar"
-        )
-    
-    # Tercera fila de KPIs
-    col7, col8 = st.columns(2)
+        st.markdown(f"""
+        <div class='stMetric'>
+            <label style='color: {COLORES['primary']};'>🏥 % OSA</label>
+            <div style='font-size: 28px; font-weight: bold; color: {COLORES['primary']};'>
+                {kpis['porcentaje_osa']:.1f}%
+            </div>
+            <small>100% - {kpis['porcentaje_cobrar']:.1f}%</small>
+        </div>
+        """, unsafe_allow_html=True)
     
     with col7:
-        st.metric(
-            "💳 Total a Cobrar (Médico)",
-            f"€{kpis['total_a_cobrar']:,.2f}",
-            help=f"Calculado: €{kpis['importe_hhmm_total']:,.2f} × {kpis['porcentaje_cobrar']:.1f}%"
-        )
+        st.markdown(f"""
+        <div class='stMetric'>
+            <label style='color: {COLORES['primary']};'>💳 Total a Cobrar</label>
+            <div style='font-size: 28px; font-weight: bold; color: {COLORES['primary']};'>
+                €{kpis['total_a_cobrar']:,.2f}
+            </div>
+            <small>Tu liquidación</small>
+        </div>
+        """, unsafe_allow_html=True)
     
     with col8:
-        # NUEVO KPI: A Cobrar OSA
-        st.metric(
-            "💰 OSA se queda con:",
-            f"€{kpis['a_cobrar_osa']:,.2f}",
-            help=f"Calculado: €{kpis['importe_hhmm_total']:,.2f} - €{kpis['total_a_cobrar']:,.2f}"
-        )
-    
-    st.markdown("---")
-    
-    # Resumen visual de distribución
-    st.subheader("📊 Distribución del Importe HHMM")
-    
-    # Crear gráfico de barras para mostrar la distribución
-    distribucion_data = {
-        'Concepto': ['Médico', 'OSA'],
-        'Monto': [kpis['total_a_cobrar'], kpis['a_cobrar_osa']],
-        'Porcentaje': [kpis['porcentaje_cobrar'], kpis['porcentaje_osa']]
-    }
-    
-    distribucion_df = pd.DataFrame(distribucion_data)
-    
-    col_chart1, col_chart2 = st.columns(2)
-    
-    with col_chart1:
-        # Gráfico de barras para montos
-        fig_montos = px.bar(
-            distribucion_df,
-            x='Concepto',
-            y='Monto',
-            title='Distribución por Monto (€)',
-            color='Concepto',
-            text_auto='.2f',
-            color_discrete_map={'Médico': '#4CAF50', 'OSA': '#2196F3'}
-        )
-        fig_montos.update_layout(
-            height=300,
-            showlegend=False,
-            yaxis_title='Monto (€)'
-        )
-        fig_montos.update_traces(texttemplate='€%{value:,.2f}', textposition='outside')
-        st.plotly_chart(fig_montos, use_container_width=True)
-    
-    with col_chart2:
-        # Gráfico de pastel para porcentajes
-        fig_porcentajes = px.pie(
-            distribucion_df,
-            values='Porcentaje',
-            names='Concepto',
-            title='Distribución por Porcentaje',
-            hole=0.4,
-            color='Concepto',
-            color_discrete_map={'Médico': '#4CAF50', 'OSA': '#2196F3'}
-        )
-        fig_porcentajes.update_layout(height=300, showlegend=True)
-        fig_porcentajes.update_traces(textinfo='percent+label')
-        st.plotly_chart(fig_porcentajes, use_container_width=True)
-    
-    # Información detallada del cálculo
-    with st.expander("ℹ️ Detalles del cálculo completo", expanded=False):
         st.markdown(f"""
-        ### 📝 **Cálculos Detallados para {nombre_medico}**
-        
-        **1. Promedio de la Subespecialidad ({subespecialidad}):**
-        ```
-        Suma total de facturación en {subespecialidad} por OSA: €{promedio_info['suma_total']:,.2f}
-        Número de médicos que facturaron: {promedio_info['num_medicos']}
-        Promedio = €{promedio_info['suma_total']:,.2f} ÷ {promedio_info['num_medicos']} = €{kpis['promedio_subespecialidad']:,.2f}
-        ```
-        
-        **2. Posición del Médico:**
-        - **{nombre_medico}** facturó: **€{kpis['importe_hhmm_total']:,.2f}**
-        - Promedio de la subespecialidad: **€{kpis['promedio_subespecialidad']:,.2f}**
-        - **Resultado:** {'POR ENCIMA' if kpis['por_encima_promedio'] else 'POR DEBAJO'} del promedio
-        - **Tipo de médico:** {kpis['tipo_medico']}
-        
-        **3. Cálculo de Porcentajes:**
-        - **% a Cobrar (Médico):** {kpis['porcentaje_cobrar']:.1f}%
-          *(Basado en reglas: {kpis['tipo_medico']} {'por encima' if kpis['por_encima_promedio'] else 'por debajo'} del promedio)*
-        - **% OSA:** 100% - {kpis['porcentaje_cobrar']:.1f}% = **{kpis['porcentaje_osa']:.1f}%**
-        
-        **4. Cálculo de Montos:**
-        - **Importe Cobrado OSA:** €{kpis['importe_hhmm_total']:,.2f}
-        - **Total a Cobrar (Médico):** €{kpis['importe_hhmm_total']:,.2f} × {kpis['porcentaje_cobrar']:.1f}% = **€{kpis['total_a_cobrar']:,.2f}**
-        - **OSA se queda con:** €{kpis['importe_hhmm_total']:,.2f} - €{kpis['total_a_cobrar']:,.2f} = **€{kpis['a_cobrar_osa']:,.2f}**
-        """)
+        <div class='stMetric'>
+            <label style='color: {COLORES['primary']};'>💰 OSA Retiene</label>
+            <div style='font-size: 28px; font-weight: bold; color: {COLORES['primary']};'>
+                €{kpis['a_cobrar_osa']:,.2f}
+            </div>
+            <small>Margen OSA</small>
+        </div>
+        """, unsafe_allow_html=True)
     
     st.markdown("---")
     
-    # Análisis por Tipo de Prestación
+    # Gráficos de distribución
+    col_g1, col_g2 = st.columns(2)
+    
+    with col_g1:
+        # Gráfico de distribución Médico vs OSA
+        distribucion_data = pd.DataFrame({
+            'Concepto': ['Médico', 'OSA'],
+            'Monto': [kpis['total_a_cobrar'], kpis['a_cobrar_osa']],
+            'Porcentaje': [kpis['porcentaje_cobrar'], kpis['porcentaje_osa']]
+        })
+        
+        fig_dist = px.pie(
+            distribucion_data,
+            values='Monto',
+            names='Concepto',
+            title='Distribución de Ingresos',
+            color='Concepto',
+            color_discrete_map={'Médico': COLORES['primary'], 'OSA': COLORES['secondary']},
+            hole=0.4
+        )
+        fig_dist.update_layout(
+            height=400,
+            title_x=0.5,
+            font=dict(size=14)
+        )
+        fig_dist.update_traces(
+            textinfo='percent+label',
+            textfont_size=14,
+            marker=dict(line=dict(color='#000000', width=2))
+        )
+        st.plotly_chart(fig_dist, use_container_width=True)
+    
+    with col_g2:
+        # Gráfico de evolución temporal (si hay suficientes datos)
+        df_medico_mensual = df_medico.groupby('Mes-Año').agg({
+            'Importe HHMM': 'sum',
+            'Importe Total': 'sum'
+        }).reset_index()
+        
+        fig_evol = px.line(
+            df_medico_mensual,
+            x='Mes-Año',
+            y='Importe HHMM',
+            title='Evolución Mensual de Facturación',
+            markers=True,
+            color_discrete_sequence=[COLORES['primary']]
+        )
+        fig_evol.update_layout(
+            height=400,
+            title_x=0.5,
+            plot_bgcolor='white',
+            xaxis_title='Mes',
+            yaxis_title='Importe HHMM (€)'
+        )
+        fig_evol.update_traces(
+            line=dict(width=3),
+            marker=dict(size=8, color=COLORES['secondary'])
+        )
+        st.plotly_chart(fig_evol, use_container_width=True)
+    
+    # Análisis por prestación (tu código original)
+    st.markdown("---")
     st.subheader("📋 Análisis por Tipo de Prestación")
     
     if 'Descripción de Prestación' in df_medico.columns:
-        # Métricas por tipo de prestación
         prestacion_analisis = df_medico.groupby('Descripción de Prestación').agg({
             'Importe HHMM': ['count', 'sum']
         }).reset_index()
-        
-        # Aplanar columnas multi-index
         prestacion_analisis.columns = ['Descripción de Prestación', 'Cantidad', 'Monto Total']
         
-        # Calcular distribución porcentual para el médico
         prestacion_analisis['% Médico'] = (prestacion_analisis['Monto Total'] / kpis['importe_hhmm_total']) * 100
         prestacion_analisis['Médico Recibe'] = prestacion_analisis['Monto Total'] * (kpis['porcentaje_cobrar'] / 100)
         prestacion_analisis['OSA Recibe'] = prestacion_analisis['Monto Total'] * (kpis['porcentaje_osa'] / 100)
         
-        # Crear dos columnas para las métricas
-        col_metrics1, col_metrics2 = st.columns(2)
-        
-        with col_metrics1:
-            st.markdown("**🏥 Unidades por Tipo de Prestación**")
-            for _, row in prestacion_analisis.iterrows():
-                st.metric(
-                    label=row['Descripción de Prestación'],
-                    value=f"{row['Cantidad']:,} unidades",
-                    delta=None
-                )
-        
-        with col_metrics2:
-            st.markdown("**💰 Monto Cobrado por OSA y Tipo de Prestación**")
-            for _, row in prestacion_analisis.iterrows():
-                st.metric(
-                    label=row['Descripción de Prestación'],
-                    value=f"€{row['Monto Total']:,.2f}",
-                    delta=None
-                )
-        
-        # Gráficos de distribución por prestación
-        col_chart3, col_chart4 = st.columns(2)
-        
-        with col_chart3:
-            # Gráfico de cantidad
-            fig_cantidad = px.pie(
-                prestacion_analisis,
-                values='Cantidad',
-                names='Descripción de Prestación',
-                title='Distribución de Unidades por Prestación',
-                hole=0.4,
-                color_discrete_sequence=px.colors.sequential.Viridis
-            )
-            fig_cantidad.update_layout(height=400)
-            st.plotly_chart(fig_cantidad, use_container_width=True)
-        
-        with col_chart4:
-            # Gráfico de monto con distribución Médico/OSA
-            fig_distribucion = go.Figure(data=[
-                go.Bar(name='Médico', x=prestacion_analisis['Descripción de Prestación'], 
-                      y=prestacion_analisis['Médico Recibe'], marker_color='#4CAF50'),
-                go.Bar(name='OSA', x=prestacion_analisis['Descripción de Prestación'], 
-                      y=prestacion_analisis['OSA Recibe'], marker_color='#2196F3')
-            ])
-            
-            fig_distribucion.update_layout(
-                title='Distribución Médico vs OSA por Prestación',
-                barmode='stack',
-                height=400,
-                xaxis_title='Tipo de Prestación',
-                yaxis_title='Monto (€)',
-                legend_title='Destino'
-            )
-            st.plotly_chart(fig_distribucion, use_container_width=True)
-        
-        # Tabla detallada con distribución
-        st.markdown("**📊 Tabla Resumen por Tipo de Prestación**")
-        prestacion_analisis['Monto Promedio'] = prestacion_analisis['Monto Total'] / prestacion_analisis['Cantidad']
-        
+        # Tabla mejorada
         st.dataframe(
             prestacion_analisis,
             use_container_width=True,
             hide_index=True,
             column_config={
                 "Descripción de Prestación": "Tipo de Prestación",
-                "Cantidad": st.column_config.NumberColumn(
-                    "Unidades",
-                    format="%d",
-                    help="Número de servicios prestados"
-                ),
-                "Monto Total": st.column_config.NumberColumn(
-                    "Monto Total OSA (€)",
-                    format="€%.2f",
-                    help="Suma del Importe HHMM"
-                ),
-                "Monto Promedio": st.column_config.NumberColumn(
-                    "Promedio por Unidad (€)",
-                    format="€%.2f",
-                    help="Monto Total / Unidades"
-                ),
-                "Médico Recibe": st.column_config.NumberColumn(
-                    "Médico Recibe (€)",
-                    format="€%.2f",
-                    help="Monto que recibe el médico"
-                ),
-                "OSA Recibe": st.column_config.NumberColumn(
-                    "OSA Retiene (€)",
-                    format="€%.2f",
-                    help="Monto que recibe OSA"
-                )
+                "Cantidad": st.column_config.NumberColumn("Unidades", format="%d"),
+                "Monto Total": st.column_config.NumberColumn("Monto Total OSA (€)", format="€%.2f"),
+                "% Médico": st.column_config.NumberColumn("% del Total", format="%.1f%%"),
+                "Médico Recibe": st.column_config.NumberColumn("Médico Recibe (€)", format="€%.2f"),
+                "OSA Recibe": st.column_config.NumberColumn("OSA Retiene (€)", format="€%.2f")
             }
-        )
-    
-    st.markdown("---")
-    
-    # Tabla con todos los registros del médico
-    with st.expander("📋 Ver todos los registros del médico", expanded=False):
-        st.dataframe(
-            df_medico,
-            use_container_width=True,
-            hide_index=True,
-            column_config={
-                "Fecha del Servicio": st.column_config.DateColumn("Fecha"),
-                "Descripción de Prestación": "Prestación",
-                "Importe HHMM": st.column_config.NumberColumn(format="€%.2f"),
-                "Importe Total": st.column_config.NumberColumn(format="€%.2f"),
-                "% Liquidación": st.column_config.NumberColumn(format="%.0f%%")
-            }
-        )
-    
-    # Botón para descargar reporte del médico
-    if st.button("📥 Descargar Reporte del Médico (Excel)", use_container_width=True, type="primary"):
-        output = io.BytesIO()
-        with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            # Hoja 1: Datos del médico
-            df_medico.to_excel(writer, index=False, sheet_name='Datos_Médico')
-            
-            # Hoja 2: Resumen por prestación
-            if 'Descripción de Prestación' in df_medico.columns:
-                prestacion_resumen = df_medico.groupby('Descripción de Prestación').agg({
-                    'Importe HHMM': ['count', 'sum', 'mean'],
-                    'Importe Total': 'sum'
-                }).reset_index()
-                prestacion_resumen.columns = ['Prestación', 'Unidades', 'Monto HHMM Total', 'Monto HHMM Promedio', 'Monto Total']
-                prestacion_resumen['% Médico'] = (prestacion_resumen['Monto HHMM Total'] / kpis['importe_hhmm_total']) * 100
-                prestacion_resumen['Médico Recibe'] = prestacion_resumen['Monto HHMM Total'] * (kpis['porcentaje_cobrar'] / 100)
-                prestacion_resumen['OSA Recibe'] = prestacion_resumen['Monto HHMM Total'] * (kpis['porcentaje_osa'] / 100)
-                prestacion_resumen.to_excel(writer, index=False, sheet_name='Resumen_Prestaciones')
-            
-            # Hoja 3: KPIs
-            kpis_df = pd.DataFrame([{
-                'Médico': nombre_medico,
-                'Subespecialidad': subespecialidad,
-                'Tipo Médico': kpis['tipo_medico'],
-                'Total Registros': kpis['total_registros'],
-                'Importe Total (100%)': kpis['importe_total'],
-                'Importe HHMM Total': kpis['importe_hhmm_total'],
-                'Promedio Subespecialidad': kpis['promedio_subespecialidad'],
-                'Posición vs Promedio': 'Por encima' if kpis['por_encima_promedio'] else 'Por debajo',
-                '% a Cobrar (Médico)': kpis['porcentaje_cobrar'],
-                '% OSA': kpis['porcentaje_osa'],
-                'Total a Cobrar (Médico)': kpis['total_a_cobrar'],
-                'A Cobrar OSA': kpis['a_cobrar_osa']
-            }])
-            kpis_df.to_excel(writer, index=False, sheet_name='KPIs')
-            
-            # Hoja 4: Distribución general
-            distribucion_df = pd.DataFrame({
-                'Concepto': ['Total', 'Médico', 'OSA'],
-                'Monto (€)': [kpis['importe_hhmm_total'], kpis['total_a_cobrar'], kpis['a_cobrar_osa']],
-                'Porcentaje': [100, kpis['porcentaje_cobrar'], kpis['porcentaje_osa']],
-                'Descripción': [
-                    'Importe HHMM Total',
-                    f'Médico recibe ({kpis["porcentaje_cobrar"]:.1f}%)',
-                    f'OSA recibe ({kpis["porcentaje_osa"]:.1f}%)'
-                ]
-            })
-            distribucion_df.to_excel(writer, index=False, sheet_name='Distribución')
-        
-        output.seek(0)
-        
-        st.download_button(
-            label=f"⬇️ Descargar Reporte de {nombre_medico}",
-            data=output,
-            file_name=f"reporte_{nombre_medico.replace(', ', '_').replace(' ', '_')}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True
         )
 
-def main():
-    # Sidebar simplificado
-    with st.sidebar:
-        st.header("📁 Carga de Datos")
+# -------------------------------------------------------------------
+# PANEL DE ADMINISTRADOR (CARGA DE DATOS)
+# -------------------------------------------------------------------
+def panel_admin(df_actual):
+    """Panel exclusivo para administradores"""
+    
+    st.markdown(f"""
+    <div class='custom-card'>
+        <h2 style='color: {COLORES['primary']};'>🔧 Panel de Administración</h2>
+        <p style='color: {COLORES['secondary']};'>Gestión de datos y configuración</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    tab1, tab2, tab3 = st.tabs(["📤 Carga de Datos", "📊 Dashboard General", "⚙️ Configuración"])
+    
+    with tab1:
+        st.subheader("Cargar Nuevo Archivo de Datos")
+        st.markdown(f"<p style='color: {COLORES['primary']};'>Formato permitido: Excel (.xlsx, .xls)</p>", unsafe_allow_html=True)
         
         uploaded_file = st.file_uploader(
-            "Sube tu archivo Excel",
-            type=['xlsx', 'xls']
+            "Selecciona el archivo Excel con los datos médicos",
+            type=['xlsx', 'xls'],
+            key="admin_upload"
         )
-        
-        df = None
         
         if uploaded_file is not None:
             try:
-                df = pd.read_excel(uploaded_file)
-                st.success(f"✅ Archivo cargado")
-                st.info(f"📊 {len(df)} registros cargados")
+                df_nuevo = pd.read_excel(uploaded_file)
+                df_procesado = procesar_datos(df_nuevo)
+                
+                # Mostrar preview
+                st.success(f"✅ Archivo cargado exitosamente: {uploaded_file.name}")
+                st.info(f"📊 Registros: {len(df_procesado)} | 👥 Médicos: {df_procesado['Profesional'].nunique()}")
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.markdown("**Vista previa de los datos:**")
+                    st.dataframe(df_procesado.head(10), use_container_width=True)
+                
+                with col2:
+                    st.markdown("**Resumen de médicos detectados:**")
+                    medicos_resumen = df_procesado.groupby('Profesional').agg({
+                        'Importe HHMM': 'sum',
+                        'Fecha del Servicio': 'count'
+                    }).reset_index()
+                    medicos_resumen.columns = ['Médico', 'Total Facturado', 'Registros']
+                    medicos_resumen = medicos_resumen.sort_values('Total Facturado', ascending=False)
+                    st.dataframe(medicos_resumen, use_container_width=True, hide_index=True)
+                
+                # Confirmar guardado
+                if st.button("💾 Guardar Datos Permanentemente", use_container_width=True, type="primary"):
+                    # Guardar datos
+                    if DataManager.save_dataframe(df_procesado):
+                        # Guardar metadatos
+                        metadata = {
+                            'fecha': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                            'archivo': uploaded_file.name,
+                            'registros': len(df_procesado),
+                            'medicos': df_procesado['Profesional'].nunique(),
+                            'usuario': st.session_state['username']
+                        }
+                        DataManager.save_upload_metadata(metadata)
+                        
+                        st.session_state['df_global'] = df_procesado
+                        st.success("✅ Datos guardados correctamente. Ya están disponibles para todos los médicos.")
+                        st.rerun()
+            
             except Exception as e:
-                st.error(f"Error al cargar el archivo: {e}")
-                st.stop()
+                st.error(f"❌ Error al procesar el archivo: {e}")
+        
+        # Mostrar estado actual
+        if df_actual is not None:
+            st.markdown("---")
+            st.markdown("**📋 Estado actual de los datos:**")
+            col_s1, col_s2, col_s3 = st.columns(3)
+            
+            with col_s1:
+                st.metric("Registros almacenados", f"{len(df_actual):,}")
+            
+            with col_s2:
+                st.metric("Médicos", f"{df_actual['Profesional'].nunique():,}")
+            
+            with col_s3:
+                metadata = DataManager.get_upload_metadata()
+                if metadata:
+                    st.metric("Última actualización", metadata.get('fecha', 'No disponible'))
+    
+    with tab2:
+        if df_actual is not None and not df_actual.empty:
+            dashboard_admin(df_actual)
         else:
-            # Usar datos de ejemplo del archivo proporcionado
-            st.info("📋 Usando datos de ejemplo")
-            
-            # Crear datos de ejemplo basados en la estructura proporcionada
-            sample_data = []
-            
-            # Datos para FALLONE, JAN
-            for i in range(10):
-                sample_data.append({
-                    "Acreedor": "ORTHOPAEDIC SPECIALIST ALLIANCE SLU",
-                    "Profesional": "FALLONE, JAN",
-                    "Especialidad": "Traumatología y cir ortopédica",
-                    "Clase aseguradora": "NAC",
-                    "Aseguradora": "AXA SALUD",
-                    "Nº de Episodio": 1013682955 + i,
-                    "Nombre paciente": f"PACIENTE {i+1}",
-                    "Fecha del Servicio": f"2025-12-{20 + i}",
-                    "Hora del Servicio": "09:00:00",
-                    "Tipo de Episodio": "Epis.ambulante",
-                    "Tipo de Prestación": "HME",
-                    "Tipo de Prestación 2": "CEX",
-                    "Cantidad": 1,
-                    "Código de Prestación": 1 if i % 2 == 0 else 2,
-                    "Descripción de Prestación": "CONSULTA" if i % 2 == 0 else "REVISION",
-                    "Importe HHMM": 19.6 + i,
-                    "% Liquidación": 70,
-                    "Nº Autofactura": f"26VBEF000004920{i}",
-                    "Nº Factura del Episodio": f"BE26TI0000003{i}",
-                    "Fecha de Liquidación": "2026-01-30"
-                })
-            
-            # Datos para ORTEGA RODRIGUEZ, JUAN PABLO
-            for i in range(8):
-                sample_data.append({
-                    "Acreedor": "ORTHOPAEDIC SPECIALIST ALLIANCE SLU",
-                    "Profesional": "ORTEGA RODRIGUEZ, JUAN PABLO",
-                    "Especialidad": "Traumatología y cir ortopédica",
-                    "Clase aseguradora": "NAC",
-                    "Aseguradora": "CIGNA SALUD",
-                    "Nº de Episodio": 1013676822 + i,
-                    "Nombre paciente": f"PACIENTE {i+11}",
-                    "Fecha del Servicio": f"2025-12-{15 + i}",
-                    "Hora del Servicio": "09:00:00",
-                    "Tipo de Episodio": "Epis.ambulante",
-                    "Tipo de Prestación": "HME",
-                    "Tipo de Prestación 2": "CEX",
-                    "Cantidad": 1,
-                    "Código de Prestación": 1 if i % 3 == 0 else 2,
-                    "Descripción de Prestación": "CONSULTA" if i % 3 == 0 else "REVISION",
-                    "Importe HHMM": 21.0 + i,
-                    "% Liquidación": 70,
-                    "Nº Autofactura": f"26VBEF000004921{i}",
-                    "Nº Factura del Episodio": f"BE25TI0000001{i}",
-                    "Fecha de Liquidación": "2026-01-30"
-                })
-            
-            # Datos para ESTEBAN FELIU, IGNACIO
-            for i in range(6):
-                sample_data.append({
-                    "Acreedor": "ORTHOPAEDIC SPECIALIST ALLIANCE SLU",
-                    "Profesional": "ESTEBAN FELIU, IGNACIO",
-                    "Especialidad": "Traumatología y cir ortopédica",
-                    "Clase aseguradora": "NAC",
-                    "Aseguradora": "AXA SALUD",
-                    "Nº de Episodio": 1013666452 + i,
-                    "Nombre paciente": f"PACIENTE {i+21}",
-                    "Fecha del Servicio": f"2025-12-{10 + i}",
-                    "Hora del Servicio": "16:34:51",
-                    "Tipo de Episodio": "Epis.ambulante",
-                    "Tipo de Prestación": "DPI" if i % 2 == 0 else "HME",
-                    "Tipo de Prestación 2": "ECO" if i % 2 == 0 else "CEX",
-                    "Cantidad": 1,
-                    "Código de Prestación": 1434 if i % 2 == 0 else 1,
-                    "Descripción de Prestación": "ECOGRAFIA MUSCULAR O TENDINOSA" if i % 2 == 0 else "CONSULTA",
-                    "Importe HHMM": 12.0 + i,
-                    "% Liquidación": 40 if i % 2 == 0 else 70,
-                    "Nº Autofactura": f"26VBEF000004922{i}",
-                    "Nº Factura del Episodio": f"BE26TI0000004{i}",
-                    "Fecha de Liquidación": "2026-01-30"
-                })
-            
-            df = pd.DataFrame(sample_data)
+            st.warning("⚠️ No hay datos cargados. Por favor, carga un archivo en la pestaña 'Carga de Datos'.")
+    
+    with tab3:
+        st.subheader("Configuración del Sistema")
+        
+        st.markdown("**Gestión de Usuarios**")
+        st.info("Aquí podrás gestionar los usuarios médicos en una versión futura.")
+        
+        st.markdown("**Configuración de Porcentajes**")
+        st.info("Configuración de porcentajes por defecto para cálculos.")
+
+# -------------------------------------------------------------------
+# FUNCIÓN PRINCIPAL
+# -------------------------------------------------------------------
+def main():
+    """Función principal de la aplicación"""
+    
+    # Verificar autenticación
+    if not check_password():
+        return
+    
+    # Obtener información del usuario
+    user_info = st.session_state['user_info']
+    username = st.session_state['username']
+    rol = user_info['rol']
+    
+    # Sidebar con información del usuario
+    with st.sidebar:
+        st.markdown(f"""
+        <div style='text-align: center; padding: 20px;'>
+            <h3 style='color: {COLORES['secondary']};'>🏥 OSA</h3>
+            <p style='color: white;'>Bienvenido,</p>
+            <p style='color: {COLORES['secondary']}; font-weight: bold;'>{user_info['nombre']}</p>
+            <p style='color: rgba(255,255,255,0.7);'>{'👑 Administrador' if rol == 'admin' else '👨‍⚕️ Médico'}</p>
+        </div>
+        """, unsafe_allow_html=True)
         
         st.markdown("---")
-        st.header("🔍 Filtros")
         
-        if df is not None and not df.empty:
-            df_procesado = procesar_datos(df)
+        # Cargar datos persistentes
+        df_global = DataManager.load_dataframe()
+        
+        if df_global is not None:
+            st.success(f"✅ Datos cargados: {len(df_global)} registros")
             
-            # Filtro por fecha
-            if 'Fecha del Servicio' in df_procesado.columns:
-                try:
-                    min_date = df_procesado['Fecha del Servicio'].min().date()
-                    max_date = df_procesado['Fecha del Servicio'].max().date()
-                    
-                    fecha_range = st.date_input(
-                        "📅 Rango de Fechas",
-                        value=(min_date, max_date),
-                        min_value=min_date,
-                        max_value=max_date
-                    )
-                    
-                    if len(fecha_range) == 2:
-                        mask = (df_procesado['Fecha del Servicio'].dt.date >= fecha_range[0]) & \
-                               (df_procesado['Fecha del Servicio'].dt.date <= fecha_range[1])
-                        df_procesado = df_procesado[mask]
-                except:
-                    pass
-            
-            # Filtro por médico
-            if 'Profesional' in df_procesado.columns:
-                try:
-                    medicos_disponibles = sorted(df_procesado['Profesional'].dropna().unique().tolist())
-                    
-                    if medicos_disponibles:
-                        medico_seleccionado = st.selectbox(
-                            "👨‍⚕️ Seleccionar Médico",
-                            medicos_disponibles,
-                            help="Seleccione un médico para ver su análisis detallado"
-                        )
-                        
-                        # Filtrar por médico seleccionado
-                        df_medico = df_procesado[df_procesado['Profesional'] == medico_seleccionado]
-                        
-                        if not df_medico.empty:
-                            # Obtener subespecialidad del médico
-                            subespecialidad = df_medico['Subespecialidad'].iloc[0]
-                            
-                            # Calcular promedio de la subespecialidad
-                            promedio_subespecialidad, suma_total, num_medicos = calcular_promedio_subespecialidad(df_procesado, subespecialidad)
-                            
-                            # Calcular KPIs individuales
-                            kpis_medico = calcular_a_cobrar_individual(df_medico, promedio_subespecialidad)
-                            
-                            if kpis_medico:
-                                # Guardar en session state
-                                st.session_state['df_medico'] = df_medico
-                                st.session_state['kpis_medico'] = kpis_medico
-                                st.session_state['promedio_info'] = {
-                                    'suma_total': suma_total,
-                                    'num_medicos': num_medicos,
-                                    'promedio': promedio_subespecialidad
-                                }
-                                st.session_state['medico_seleccionado'] = medico_seleccionado
-                                st.session_state['subespecialidad'] = subespecialidad
-                    else:
-                        st.warning("No hay médicos disponibles en el rango de fechas seleccionado")
-                except Exception as e:
-                    st.error(f"Error al procesar médicos: {e}")
+            metadata = DataManager.get_upload_metadata()
+            if metadata:
+                st.info(f"📅 Última actualización: {metadata.get('fecha', 'No disponible')}")
+        else:
+            if rol == 'admin':
+                st.warning("⚠️ No hay datos cargados. Ve al panel de administración para cargar datos.")
+            else:
+                st.warning("⏳ Esperando que el administrador cargue los datos...")
+        
+        st.markdown("---")
+        logout()
     
-    # Área principal - Dashboard del médico
-    if 'df_medico' in st.session_state and 'kpis_medico' in st.session_state:
-        df_medico = st.session_state['df_medico']
-        kpis_medico = st.session_state['kpis_medico']
-        promedio_info = st.session_state['promedio_info']
+    # Área principal según el rol
+    if rol == 'admin':
+        # Dashboard para administrador
+        st.markdown(f"""
+        <h1 style='color: {COLORES['primary']};'>🏥 OSA Medical Analytics</h1>
+        <p style='color: {COLORES['secondary']}; font-size: 18px;'>Panel de Administración</p>
+        """, unsafe_allow_html=True)
         
-        if not df_medico.empty and kpis_medico:
-            # Crear dashboard del médico
-            crear_dashboard_medico(df_medico, kpis_medico, promedio_info)
-    else:
-        # Pantalla de inicio
-        st.markdown("""
-        ## 👨‍⚕️ Bienvenido al Dashboard de Análisis Médico Individual
+        panel_admin(df_global)
+    
+    elif rol == 'medico':
+        # Dashboard para médico
+        profesional = user_info['profesional']
         
-        ### 📋 Instrucciones:
-        1. **Carga tu archivo Excel** usando el panel lateral
-        2. **Selecciona el rango de fechas** que deseas analizar
-        3. **Selecciona un médico** de la lista
-        4. **Visualiza el análisis completo** con todos los KPIs
-        
-        ### 📊 **KPIs que se generan por médico (8 KPIs total):**
-        
-        #### **Fila 1 - Registros e Importes:**
-        - **Facturado x Vithas**: Importe total al 100%
-        - **Cobrado x OSA**: Importe HHMM (descontado % Vithas)
-        - **Promedio Subespecialidad**: Comparativa con otros médicos
-        - **Total Registros**: Número de servicios prestados
-        
-        #### **Fila 2 - Porcentajes:**
-        - **% a Cobrar (Médico)**: Porcentaje que recibe el médico
-        - **% OSA**: Porcentaje que retiene OSA (100% - % Médico)
-        
-        #### **Fila 3 - Montos a Cobrar:**
-        - **Total a Cobrar (Médico)**: Monto que recibe el médico
-        - **OSA se queda con**: Monto que retiene OSA
-        
-        ### 📋 **Nuevos KPIs Agregados:**
-        
-        **1. % OSA:**
-        ```
-        % OSA = 100% - % a Cobrar (Médico)
-        Ejemplo: Si médico recibe 92%, OSA recibe 8%
-        ```
-        
-        **2. OSA se queda con:**
-        ```
-        OSA retiene = Importe HHMM Total - Total a Cobrar (Médico)
-        Ejemplo: €1,000 total - €920 médico = €80 OSA
-        ```
-        
-        ### 📋 **Análisis por Tipo de Prestación:**
-        - **Unidades por tipo de prestación** (cantidad de servicios)
-        - **Monto facturado por tipo de prestación**
-        - **Distribución Médico vs OSA** por cada prestación
-        - **Gráficos de distribución** interactivos
-        
-        ### 📥 **Funcionalidades adicionales:**
-        - **Descargar reporte completo** en Excel (4 hojas)
-        - **Ver todos los registros** del médico
-        - **Detalles del cálculo** completo
-        
-        *Si no cargas un archivo, se usarán datos de ejemplo con 3 médicos diferentes.*
-        """)
+        if df_global is None or df_global.empty:
+            st.markdown(f"""
+            <div style='text-align: center; padding: 50px;'>
+                <h2 style='color: {COLORES['primary']};'>👨‍⚕️ {user_info['nombre']}</h2>
+                <p style='color: {COLORES['secondary']}; font-size: 18px;'>Esperando datos del administrador...</p>
+                <p>El administrador cargará los datos próximamente. Por favor, intenta más tarde.</p>
+            </div>
+            """, unsafe_allow_html=True)
+        else:
+            dashboard_medico(df_global, profesional)
 
 if __name__ == "__main__":
     main()
