@@ -532,123 +532,207 @@ def calcular_dashboard_general(df):
     }
 
 # -------------------------------------------------------------------
-# FUNCIÓN PARA TABLA DETALLADA DE ADMIN (TODOS LOS MÉDICOS)
+# FUNCIÓN PARA TABLA DETALLADA DE ADMIN - VERSIÓN ULTRA ROBUSTA
 # -------------------------------------------------------------------
 def tabla_detalle_admin(df):
     """Genera la tabla detallada para administradores con todos los médicos"""
     
     st.subheader("📋 Detalle de Servicios - Todos los Médicos")
     
-    # Crear DataFrame con las columnas solicitadas en el orden correcto
-    columnas_deseadas = {
+    # -----------------------------------------------------------------
+    # PASO 1: DETECTAR COLUMNAS REALES DEL DATAFRAME
+    # -----------------------------------------------------------------
+    columnas_df = df.columns.tolist()
+    
+    # Mapeo de nombres de columna que podrían significar "Aseguradora"
+    posibles_nombres_aseguradora = [
+        'Aseguradora', 'aseguradora', 'ASEGURADORA',
+        'Aseguradora ', ' ASEGURADORA',  # con espacios
+        'Nombre Aseguradora', 'Compañía', 'CIA', 'Cia',
+        'Aseguradora Nombre', 'Aseguradora Name',
+        'Aseguradora_Name', 'Aseguradora_Nombre',
+        'Aseguradora_Name', 'Aseguradora_Nombre',
+        'Aseguradora_Name', 'Aseguradora_Nombre',
+        'Insurance', 'INSURANCE', 'insurance',
+        'Insurance Company', 'COMPANY', 'Company',
+        'Aseguradora_Name', 'Aseguradora_Nombre',
+        'Aseguradora_Name', 'Aseguradora_Nombre'
+    ]
+    
+    # Buscar qué columna del DataFrame coincide con alguna de las posibles
+    columna_aseguradora_real = None
+    for posible in posibles_nombres_aseguradora:
+        if posible in columnas_df:
+            columna_aseguradora_real = posible
+            break
+    
+    # -----------------------------------------------------------------
+    # PASO 2: DEFINIR COLUMNAS DESEADAS CON LOS NOMBRES REALES
+    # -----------------------------------------------------------------
+    mapeo_columnas = {
         'Fecha del Servicio': 'Fecha del servicio',
         'Profesional': 'Profesional',
-        'Aseguradora': 'Aseguradora',
         'Descripción de Prestación': 'Descripción de Prestación',
         'Importe Total': 'Monto Cobrado por Vithas (€)',
         '% Liquidación': '% Liquidación',
         'Importe HHMM': 'Importe Cobrado OSA (€)'
     }
     
-    # Verificar qué columnas existen en el DataFrame
-    columnas_existentes = [col for col in columnas_deseadas.keys() if col in df.columns]
+    # Agregar la columna de aseguradora SOLO si existe
+    if columna_aseguradora_real:
+        mapeo_columnas[columna_aseguradora_real] = 'Aseguradora'
     
-    if columnas_existentes:
-        # Crear DataFrame con las columnas seleccionadas
-        df_detalle = df[columnas_existentes].copy()
-        
-        # Renombrar columnas
-        df_detalle = df_detalle.rename(columns={k: v for k, v in columnas_deseadas.items() if k in df_detalle.columns})
-        
-        # Asegurar el orden correcto de columnas
-        orden_columnas = [
-            'Fecha del servicio',
-            'Profesional', 
-            'Aseguradora',
-            'Descripción de Prestación',
-            'Monto Cobrado por Vithas (€)',
-            '% Liquidación',
-            'Importe Cobrado OSA (€)'
-        ]
-        
-        # Solo mantener columnas que existen
-        orden_columnas = [col for col in orden_columnas if col in df_detalle.columns]
-        df_detalle = df_detalle[orden_columnas]
-        
-        # Formatear fechas
-        if 'Fecha del servicio' in df_detalle.columns:
-            df_detalle['Fecha del servicio'] = pd.to_datetime(df_detalle['Fecha del servicio']).dt.strftime('%d/%m/%Y')
-        
-        # Filtros adicionales para admin
-        col_f1, col_f2 = st.columns(2)
-        
-        with col_f1:
-            medicos = ['TODOS'] + sorted(df_detalle['Profesional'].unique().tolist())
-            medico_filtro = st.selectbox("👨‍⚕️ Filtrar por Médico", medicos, key="admin_filtro_medico")
-        
-        with col_f2:
-            aseguradoras = ['TODAS'] + sorted(df_detalle['Aseguradora'].unique().tolist())
+    # -----------------------------------------------------------------
+    # PASO 3: VERIFICAR QUÉ COLUMNAS EXISTEN REALMENTE
+    # -----------------------------------------------------------------
+    columnas_existentes = [col for col in mapeo_columnas.keys() if col in df.columns]
+    
+    if not columnas_existentes:
+        st.warning("⚠️ No se encontraron las columnas necesarias para mostrar el detalle de servicios.")
+        with st.expander("🔍 Ver columnas disponibles en el archivo"):
+            st.write(columnas_df)
+        return
+    
+    # -----------------------------------------------------------------
+    # PASO 4: CREAR DATAFRAME CON LAS COLUMNAS SELECCIONADAS
+    # -----------------------------------------------------------------
+    df_detalle = df[columnas_existentes].copy()
+    
+    # Renombrar columnas
+    renombres = {}
+    for col_original, col_nueva in mapeo_columnas.items():
+        if col_original in df_detalle.columns:
+            renombres[col_original] = col_nueva
+    
+    df_detalle = df_detalle.rename(columns=renombres)
+    
+    # -----------------------------------------------------------------
+    # PASO 5: CONSTRUIR ORDEN DE COLUMNAS DINÁMICAMENTE
+    # -----------------------------------------------------------------
+    orden_columnas = ['Fecha del servicio', 'Profesional']
+    
+    # Agregar Aseguradora SOLO si existe
+    if 'Aseguradora' in df_detalle.columns:
+        orden_columnas.append('Aseguradora')
+    
+    # Agregar el resto de columnas
+    orden_columnas.extend([
+        'Descripción de Prestación',
+        'Monto Cobrado por Vithas (€)',
+        '% Liquidación',
+        'Importe Cobrado OSA (€)'
+    ])
+    
+    # Solo mantener columnas que realmente existen
+    orden_columnas = [col for col in orden_columnas if col in df_detalle.columns]
+    df_detalle = df_detalle[orden_columnas]
+    
+    # -----------------------------------------------------------------
+    # PASO 6: FORMATEAR FECHAS
+    # -----------------------------------------------------------------
+    if 'Fecha del servicio' in df_detalle.columns:
+        df_detalle['Fecha del servicio'] = pd.to_datetime(
+            df_detalle['Fecha del servicio'], 
+            errors='coerce'
+        ).dt.strftime('%d/%m/%Y')
+    
+    # -----------------------------------------------------------------
+    # PASO 7: FILTROS PARA ADMIN
+    # -----------------------------------------------------------------
+    col_f1, col_f2 = st.columns(2)
+    
+    with col_f1:
+        medicos = ['TODOS'] + sorted(df_detalle['Profesional'].unique().tolist())
+        medico_filtro = st.selectbox("👨‍⚕️ Filtrar por Médico", medicos, key="admin_filtro_medico")
+    
+    with col_f2:
+        # Solo mostrar filtro de aseguradora si existe la columna
+        if 'Aseguradora' in df_detalle.columns:
+            aseguradoras = ['TODAS'] + sorted(df_detalle['Aseguradora'].dropna().unique().tolist())
             aseguradora_filtro = st.selectbox("🏥 Filtrar por Aseguradora", aseguradoras, key="admin_filtro_aseguradora")
-        
-        # Aplicar filtros
-        df_detalle_filtrado = df_detalle.copy()
-        
-        if medico_filtro != 'TODOS':
-            df_detalle_filtrado = df_detalle_filtrado[df_detalle_filtrado['Profesional'] == medico_filtro]
-        
-        if aseguradora_filtro != 'TODAS':
-            df_detalle_filtrado = df_detalle_filtrado[df_detalle_filtrado['Aseguradora'] == aseguradora_filtro]
-        
-        # Métricas del filtro
-        col_m1, col_m2, col_m3 = st.columns(3)
-        
-        with col_m1:
-            st.metric("Registros", f"{len(df_detalle_filtrado):,}")
-        
-        with col_m2:
-            total_vithas = df_detalle_filtrado['Monto Cobrado por Vithas (€)'].sum() if 'Monto Cobrado por Vithas (€)' in df_detalle_filtrado.columns else 0
-            st.metric("Total Vithas", f"€{total_vithas:,.2f}")
-        
-        with col_m3:
-            total_osa = df_detalle_filtrado['Importe Cobrado OSA (€)'].sum() if 'Importe Cobrado OSA (€)' in df_detalle_filtrado.columns else 0
-            st.metric("Total OSA", f"€{total_osa:,.2f}")
-        
-        # Mostrar la tabla
-        st.dataframe(
-            df_detalle_filtrado,
-            use_container_width=True,
-            hide_index=True,
-            column_config={
-                "Fecha del servicio": "Fecha",
-                "Profesional": "Médico",
-                "Aseguradora": "Aseguradora",
-                "Descripción de Prestación": "Prestación",
-                "Monto Cobrado por Vithas (€)": st.column_config.NumberColumn(
-                    "Monto Vithas (€)",
-                    format="€%.2f",
-                    help="Importe total al 100%"
-                ),
-                "% Liquidación": st.column_config.NumberColumn(
-                    "% Liquidación",
-                    format="%.0f%%",
-                    help="Porcentaje que liquida Vithas"
-                ),
-                "Importe Cobrado OSA (€)": st.column_config.NumberColumn(
-                    "Importe OSA (€)",
-                    format="€%.2f",
-                    help="Importe que cobra OSA (descontado % Vithas)"
-                )
-            }
+        else:
+            aseguradora_filtro = 'TODAS'
+            st.info("ℹ️ Columna 'Aseguradora' no encontrada en el archivo. Nombres disponibles: " + 
+                   ", ".join([c for c in columnas_df if 'aseg' in c.lower() or 'insur' in c.lower() or 'cia' in c.lower()][:5]) 
+                   if any('aseg' in c.lower() or 'insur' in c.lower() or 'cia' in c.lower() for c in columnas_df) 
+                   else "No se detectó ninguna columna de aseguradora")
+    
+    # -----------------------------------------------------------------
+    # PASO 8: APLICAR FILTROS
+    # -----------------------------------------------------------------
+    df_detalle_filtrado = df_detalle.copy()
+    
+    if medico_filtro != 'TODOS':
+        df_detalle_filtrado = df_detalle_filtrado[df_detalle_filtrado['Profesional'] == medico_filtro]
+    
+    if 'Aseguradora' in df_detalle.columns and aseguradora_filtro != 'TODAS':
+        df_detalle_filtrado = df_detalle_filtrado[df_detalle_filtrado['Aseguradora'] == aseguradora_filtro]
+    
+    # -----------------------------------------------------------------
+    # PASO 9: MÉTRICAS DEL FILTRO
+    # -----------------------------------------------------------------
+    col_m1, col_m2, col_m3 = st.columns(3)
+    
+    with col_m1:
+        st.metric("📌 Registros", f"{len(df_detalle_filtrado):,}")
+    
+    with col_m2:
+        total_vithas = df_detalle_filtrado['Monto Cobrado por Vithas (€)'].sum() if 'Monto Cobrado por Vithas (€)' in df_detalle_filtrado.columns else 0
+        st.metric("💰 Total Vithas", f"€{total_vithas:,.2f}")
+    
+    with col_m3:
+        total_osa = df_detalle_filtrado['Importe Cobrado OSA (€)'].sum() if 'Importe Cobrado OSA (€)' in df_detalle_filtrado.columns else 0
+        st.metric("💵 Total OSA", f"€{total_osa:,.2f}")
+    
+    # -----------------------------------------------------------------
+    # PASO 10: CONFIGURACIÓN DE COLUMNAS PARA LA TABLA
+    # -----------------------------------------------------------------
+    column_config = {
+        "Fecha del servicio": st.column_config.TextColumn("Fecha"),
+        "Profesional": st.column_config.TextColumn("Médico"),
+        "Descripción de Prestación": st.column_config.TextColumn("Prestación"),
+        "Monto Cobrado por Vithas (€)": st.column_config.NumberColumn(
+            "Monto Vithas (€)",
+            format="€%.2f",
+            help="Importe total al 100%"
+        ),
+        "% Liquidación": st.column_config.NumberColumn(
+            "% Liquidación",
+            format="%.0f%%",
+            help="Porcentaje que liquida Vithas"
+        ),
+        "Importe Cobrado OSA (€)": st.column_config.NumberColumn(
+            "Importe OSA (€)",
+            format="€%.2f",
+            help="Importe que cobra OSA (descontado % Vithas)"
         )
-        
-        # Botón de descarga para admin
-        if st.button("📥 Descargar Detalle Completo (Excel)", use_container_width=True, type="primary"):
-            output = io.BytesIO()
-            with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                # Hoja 1: Detalle completo
-                df_detalle_filtrado.to_excel(writer, index=False, sheet_name='Detalle_Servicios')
-                
-                # Hoja 2: Resumen por médico
+    }
+    
+    # Agregar Aseguradora a la configuración SOLO si existe
+    if 'Aseguradora' in df_detalle_filtrado.columns:
+        column_config["Aseguradora"] = st.column_config.TextColumn("Aseguradora")
+    
+    # -----------------------------------------------------------------
+    # PASO 11: MOSTRAR TABLA
+    # -----------------------------------------------------------------
+    st.dataframe(
+        df_detalle_filtrado,
+        use_container_width=True,
+        hide_index=True,
+        column_config=column_config
+    )
+    
+    # -----------------------------------------------------------------
+    # PASO 12: BOTÓN DE DESCARGA
+    # -----------------------------------------------------------------
+    if st.button("📥 Descargar Detalle Completo (Excel)", use_container_width=True, type="primary"):
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            # Hoja 1: Detalle completo
+            df_detalle_filtrado.to_excel(writer, index=False, sheet_name='Detalle_Servicios')
+            
+            # Hoja 2: Resumen por médico
+            if 'Profesional' in df_detalle_filtrado.columns:
                 resumen_medico = df_detalle_filtrado.groupby('Profesional').agg({
                     'Monto Cobrado por Vithas (€)': 'sum',
                     'Importe Cobrado OSA (€)': 'sum',
@@ -656,8 +740,9 @@ def tabla_detalle_admin(df):
                 }).reset_index()
                 resumen_medico.columns = ['Médico', 'Total Vithas', 'Total OSA', 'Registros']
                 resumen_medico.to_excel(writer, index=False, sheet_name='Resumen_Medicos')
-                
-                # Hoja 3: Resumen por aseguradora
+            
+            # Hoja 3: Resumen por aseguradora (solo si existe)
+            if 'Aseguradora' in df_detalle_filtrado.columns:
                 resumen_aseguradora = df_detalle_filtrado.groupby('Aseguradora').agg({
                     'Monto Cobrado por Vithas (€)': 'sum',
                     'Importe Cobrado OSA (€)': 'sum',
@@ -665,18 +750,16 @@ def tabla_detalle_admin(df):
                 }).reset_index()
                 resumen_aseguradora.columns = ['Aseguradora', 'Total Vithas', 'Total OSA', 'Registros']
                 resumen_aseguradora.to_excel(writer, index=False, sheet_name='Resumen_Aseguradoras')
-            
-            output.seek(0)
-            
-            st.download_button(
-                label=f"⬇️ Confirmar Descarga",
-                data=output,
-                file_name=f"detalle_completo_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
-    else:
-        st.warning("No se encontraron las columnas necesarias para mostrar el detalle de servicios.")
-
+        
+        output.seek(0)
+        
+        st.download_button(
+            label=f"⬇️ Confirmar Descarga Excel",
+            data=output,
+            file_name=f"detalle_osa_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True
+        )
 # -------------------------------------------------------------------
 # DASHBOARD ADMINISTRADOR
 # -------------------------------------------------------------------
