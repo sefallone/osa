@@ -3,5 +3,5 @@ pandas
 numpy
 plotly
 openpyxl
+pyarrow
 xlrd
-python-dateutil
