@@ -1,0 +1,16 @@
+# Streamlit secrets
+.streamlit/secrets.toml
+secrets.toml
+*.secrets.toml
+
+# Datos locales
+data/
+*.parquet
+*.db
+
+# Python
+__pycache__/
+*.pyc
+.env
+venv/
+env/
