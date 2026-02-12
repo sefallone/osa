@@ -117,7 +117,7 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # -------------------------------------------------------------------
-# PROFESIONALES_INFO (diccionario de médicos)
+# PROFESIONALES_INFO - Diccionario de médicos
 # -------------------------------------------------------------------
 PROFESIONALES_INFO = {
     "FALLONE, JAN": {"especialidad": "HOMBRO Y CODO", "tipo": "CONSULTOR"},
@@ -166,7 +166,7 @@ def cargar_usuarios():
                 credenciales_medicos = secrets_local.get("credenciales_medicos", {})
                 st.info("📁 Usando configuración local desde .streamlit/secrets.toml")
             else:
-                # ⚠️ SOLO PARA DESARROLLO - NUNCA EN PRODUCCIÓN
+                # SOLO PARA DESARROLLO - NUNCA EN PRODUCCIÓN
                 admin_pass = "admin123"
                 medico_default = "medico123"
                 credenciales_medicos = {}
@@ -532,6 +532,152 @@ def calcular_dashboard_general(df):
     }
 
 # -------------------------------------------------------------------
+# FUNCIÓN PARA TABLA DETALLADA DE ADMIN (TODOS LOS MÉDICOS)
+# -------------------------------------------------------------------
+def tabla_detalle_admin(df):
+    """Genera la tabla detallada para administradores con todos los médicos"""
+    
+    st.subheader("📋 Detalle de Servicios - Todos los Médicos")
+    
+    # Crear DataFrame con las columnas solicitadas en el orden correcto
+    columnas_deseadas = {
+        'Fecha del Servicio': 'Fecha del servicio',
+        'Profesional': 'Profesional',
+        'Aseguradora': 'Aseguradora',
+        'Descripción de Prestación': 'Descripción de Prestación',
+        'Importe Total': 'Monto Cobrado por Vithas (€)',
+        '% Liquidación': '% Liquidación',
+        'Importe HHMM': 'Importe Cobrado OSA (€)'
+    }
+    
+    # Verificar qué columnas existen en el DataFrame
+    columnas_existentes = [col for col in columnas_deseadas.keys() if col in df.columns]
+    
+    if columnas_existentes:
+        # Crear DataFrame con las columnas seleccionadas
+        df_detalle = df[columnas_existentes].copy()
+        
+        # Renombrar columnas
+        df_detalle = df_detalle.rename(columns={k: v for k, v in columnas_deseadas.items() if k in df_detalle.columns})
+        
+        # Asegurar el orden correcto de columnas
+        orden_columnas = [
+            'Fecha del servicio',
+            'Profesional', 
+            'Aseguradora',
+            'Descripción de Prestación',
+            'Monto Cobrado por Vithas (€)',
+            '% Liquidación',
+            'Importe Cobrado OSA (€)'
+        ]
+        
+        # Solo mantener columnas que existen
+        orden_columnas = [col for col in orden_columnas if col in df_detalle.columns]
+        df_detalle = df_detalle[orden_columnas]
+        
+        # Formatear fechas
+        if 'Fecha del servicio' in df_detalle.columns:
+            df_detalle['Fecha del servicio'] = pd.to_datetime(df_detalle['Fecha del servicio']).dt.strftime('%d/%m/%Y')
+        
+        # Filtros adicionales para admin
+        col_f1, col_f2 = st.columns(2)
+        
+        with col_f1:
+            medicos = ['TODOS'] + sorted(df_detalle['Profesional'].unique().tolist())
+            medico_filtro = st.selectbox("👨‍⚕️ Filtrar por Médico", medicos, key="admin_filtro_medico")
+        
+        with col_f2:
+            aseguradoras = ['TODAS'] + sorted(df_detalle['Aseguradora'].unique().tolist())
+            aseguradora_filtro = st.selectbox("🏥 Filtrar por Aseguradora", aseguradoras, key="admin_filtro_aseguradora")
+        
+        # Aplicar filtros
+        df_detalle_filtrado = df_detalle.copy()
+        
+        if medico_filtro != 'TODOS':
+            df_detalle_filtrado = df_detalle_filtrado[df_detalle_filtrado['Profesional'] == medico_filtro]
+        
+        if aseguradora_filtro != 'TODAS':
+            df_detalle_filtrado = df_detalle_filtrado[df_detalle_filtrado['Aseguradora'] == aseguradora_filtro]
+        
+        # Métricas del filtro
+        col_m1, col_m2, col_m3 = st.columns(3)
+        
+        with col_m1:
+            st.metric("Registros", f"{len(df_detalle_filtrado):,}")
+        
+        with col_m2:
+            total_vithas = df_detalle_filtrado['Monto Cobrado por Vithas (€)'].sum() if 'Monto Cobrado por Vithas (€)' in df_detalle_filtrado.columns else 0
+            st.metric("Total Vithas", f"€{total_vithas:,.2f}")
+        
+        with col_m3:
+            total_osa = df_detalle_filtrado['Importe Cobrado OSA (€)'].sum() if 'Importe Cobrado OSA (€)' in df_detalle_filtrado.columns else 0
+            st.metric("Total OSA", f"€{total_osa:,.2f}")
+        
+        # Mostrar la tabla
+        st.dataframe(
+            df_detalle_filtrado,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Fecha del servicio": "Fecha",
+                "Profesional": "Médico",
+                "Aseguradora": "Aseguradora",
+                "Descripción de Prestación": "Prestación",
+                "Monto Cobrado por Vithas (€)": st.column_config.NumberColumn(
+                    "Monto Vithas (€)",
+                    format="€%.2f",
+                    help="Importe total al 100%"
+                ),
+                "% Liquidación": st.column_config.NumberColumn(
+                    "% Liquidación",
+                    format="%.0f%%",
+                    help="Porcentaje que liquida Vithas"
+                ),
+                "Importe Cobrado OSA (€)": st.column_config.NumberColumn(
+                    "Importe OSA (€)",
+                    format="€%.2f",
+                    help="Importe que cobra OSA (descontado % Vithas)"
+                )
+            }
+        )
+        
+        # Botón de descarga para admin
+        if st.button("📥 Descargar Detalle Completo (Excel)", use_container_width=True, type="primary"):
+            output = io.BytesIO()
+            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                # Hoja 1: Detalle completo
+                df_detalle_filtrado.to_excel(writer, index=False, sheet_name='Detalle_Servicios')
+                
+                # Hoja 2: Resumen por médico
+                resumen_medico = df_detalle_filtrado.groupby('Profesional').agg({
+                    'Monto Cobrado por Vithas (€)': 'sum',
+                    'Importe Cobrado OSA (€)': 'sum',
+                    'Fecha del servicio': 'count'
+                }).reset_index()
+                resumen_medico.columns = ['Médico', 'Total Vithas', 'Total OSA', 'Registros']
+                resumen_medico.to_excel(writer, index=False, sheet_name='Resumen_Medicos')
+                
+                # Hoja 3: Resumen por aseguradora
+                resumen_aseguradora = df_detalle_filtrado.groupby('Aseguradora').agg({
+                    'Monto Cobrado por Vithas (€)': 'sum',
+                    'Importe Cobrado OSA (€)': 'sum',
+                    'Fecha del servicio': 'count'
+                }).reset_index()
+                resumen_aseguradora.columns = ['Aseguradora', 'Total Vithas', 'Total OSA', 'Registros']
+                resumen_aseguradora.to_excel(writer, index=False, sheet_name='Resumen_Aseguradoras')
+            
+            output.seek(0)
+            
+            st.download_button(
+                label=f"⬇️ Confirmar Descarga",
+                data=output,
+                file_name=f"detalle_completo_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+    else:
+        st.warning("No se encontraron las columnas necesarias para mostrar el detalle de servicios.")
+
+# -------------------------------------------------------------------
 # DASHBOARD ADMINISTRADOR
 # -------------------------------------------------------------------
 def dashboard_admin(df):
@@ -722,8 +868,9 @@ def dashboard_admin(df):
             )
             st.plotly_chart(fig_top, use_container_width=True)
         
-        # Tabla de médicos con KPIs individuales
         st.markdown("---")
+        
+        # Tabla de médicos con KPIs individuales
         st.subheader("📋 Análisis Individual por Médico")
         
         medicos_data = []
@@ -767,9 +914,14 @@ def dashboard_admin(df):
                 "% OSA": "% OSA"
             }
         )
+        
+        st.markdown("---")
+        
+        # Tabla detallada para admin (todos los médicos)
+        tabla_detalle_admin(df_filtered)
 
 # -------------------------------------------------------------------
-# DASHBOARD MÉDICO
+# DASHBOARD MÉDICO - COMPLETAMENTE ACTUALIZADO
 # -------------------------------------------------------------------
 def dashboard_medico(df, profesional_nombre):
     """Dashboard específico para médicos"""
@@ -970,8 +1122,11 @@ def dashboard_medico(df, profesional_nombre):
             )
             st.plotly_chart(fig_evol, use_container_width=True)
     
-    # Análisis por prestación
     st.markdown("---")
+    
+    # -------------------------------------------------------------------
+    # ANÁLISIS POR TIPO DE PRESTACIÓN - ACTUALIZADO
+    # -------------------------------------------------------------------
     st.subheader("📋 Análisis por Tipo de Prestación")
     
     if 'Descripción de Prestación' in df_medico.columns:
@@ -980,10 +1135,17 @@ def dashboard_medico(df, profesional_nombre):
         }).reset_index()
         prestacion_analisis.columns = ['Descripción de Prestación', 'Cantidad', 'Monto Total']
         
-        prestacion_analisis['% Médico'] = (prestacion_analisis['Monto Total'] / kpis['importe_hhmm_total']) * 100
+        # Calcular porcentaje y distribución
+        prestacion_analisis['% del Total'] = (prestacion_analisis['Monto Total'] / kpis['importe_hhmm_total']) * 100
         prestacion_analisis['Médico Recibe'] = prestacion_analisis['Monto Total'] * (kpis['porcentaje_cobrar'] / 100)
         prestacion_analisis['OSA Recibe'] = prestacion_analisis['Monto Total'] * (kpis['porcentaje_osa'] / 100)
-        prestacion_analisis['Precio Promedio'] = prestacion_analisis['Monto Total'] / prestacion_analisis['Cantidad']
+        prestacion_analisis['Monto Promedio'] = prestacion_analisis['Monto Total'] / prestacion_analisis['Cantidad']
+        
+        # RENOMBRAR COLUMNAS SEGÚN LO SOLICITADO
+        prestacion_analisis = prestacion_analisis.rename(columns={
+            'Monto Total': 'Monto Cobrado por OSA (€)',
+            'Monto Promedio': 'Monto Promedio (€)'
+        })
         
         st.dataframe(
             prestacion_analisis,
@@ -992,13 +1154,119 @@ def dashboard_medico(df, profesional_nombre):
             column_config={
                 "Descripción de Prestación": "Tipo de Prestación",
                 "Cantidad": st.column_config.NumberColumn("Unidades", format="%d"),
-                "Monto Total": st.column_config.NumberColumn("Monto Total OSA (€)", format="€%.2f"),
-                "Precio Promedio": st.column_config.NumberColumn("Precio Promedio (€)", format="€%.2f"),
-                "% Médico": st.column_config.NumberColumn("% del Total", format="%.1f%%"),
+                "Monto Cobrado por OSA (€)": st.column_config.NumberColumn("Monto Cobrado por OSA (€)", format="€%.2f"),
+                "Monto Promedio (€)": st.column_config.NumberColumn("Monto Promedio (€)", format="€%.2f"),
+                "% del Total": st.column_config.NumberColumn("% del Total", format="%.1f%%"),
                 "Médico Recibe": st.column_config.NumberColumn("Médico Recibe (€)", format="€%.2f"),
                 "OSA Recibe": st.column_config.NumberColumn("OSA Retiene (€)", format="€%.2f")
             }
         )
+    
+    st.markdown("---")
+    
+    # -------------------------------------------------------------------
+    # TABLA ORIGINAL FILTRADA - NUEVA SECCIÓN
+    # -------------------------------------------------------------------
+    st.subheader("📋 Detalle de Servicios")
+    
+    # Crear DataFrame con las columnas solicitadas en el orden correcto
+    columnas_deseadas = {
+        'Fecha del Servicio': 'Fecha del servicio',
+        'Profesional': 'Profesional',
+        'Aseguradora': 'Aseguradora',
+        'Descripción de Prestación': 'Descripción de Prestación',
+        'Importe Total': 'Monto Cobrado por Vithas (€)',
+        '% Liquidación': '% Liquidación',
+        'Importe HHMM': 'Importe Cobrado OSA (€)'
+    }
+    
+    # Verificar qué columnas existen en el DataFrame
+    columnas_existentes = [col for col in columnas_deseadas.keys() if col in df_medico.columns]
+    
+    if columnas_existentes:
+        # Crear DataFrame con las columnas seleccionadas
+        df_detalle = df_medico[columnas_existentes].copy()
+        
+        # Renombrar columnas
+        df_detalle = df_detalle.rename(columns={k: v for k, v in columnas_deseadas.items() if k in df_detalle.columns})
+        
+        # Asegurar el orden correcto de columnas
+        orden_columnas = [
+            'Fecha del servicio',
+            'Profesional', 
+            'Aseguradora',
+            'Descripción de Prestación',
+            'Monto Cobrado por Vithas (€)',
+            '% Liquidación',
+            'Importe Cobrado OSA (€)'
+        ]
+        
+        # Solo mantener columnas que existen
+        orden_columnas = [col for col in orden_columnas if col in df_detalle.columns]
+        df_detalle = df_detalle[orden_columnas]
+        
+        # Formatear fechas
+        if 'Fecha del servicio' in df_detalle.columns:
+            df_detalle['Fecha del servicio'] = pd.to_datetime(df_detalle['Fecha del servicio']).dt.strftime('%d/%m/%Y')
+        
+        # Mostrar la tabla
+        st.dataframe(
+            df_detalle,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Fecha del servicio": "Fecha",
+                "Profesional": "Médico",
+                "Aseguradora": "Aseguradora",
+                "Descripción de Prestación": "Prestación",
+                "Monto Cobrado por Vithas (€)": st.column_config.NumberColumn(
+                    "Monto Vithas (€)",
+                    format="€%.2f",
+                    help="Importe total al 100%"
+                ),
+                "% Liquidación": st.column_config.NumberColumn(
+                    "% Liquidación",
+                    format="%.0f%%",
+                    help="Porcentaje que liquida Vithas"
+                ),
+                "Importe Cobrado OSA (€)": st.column_config.NumberColumn(
+                    "Importe OSA (€)",
+                    format="€%.2f",
+                    help="Importe que cobra OSA (descontado % Vithas)"
+                )
+            }
+        )
+        
+        # Botón de descarga para la tabla detallada
+        if st.button("📥 Descargar Detalle de Servicios (Excel)", use_container_width=True):
+            output = io.BytesIO()
+            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                df_detalle.to_excel(writer, index=False, sheet_name='Detalle_Servicios')
+                
+                # Agregar hoja de resumen de KPIs
+                kpis_resumen = pd.DataFrame([{
+                    'Médico': profesional_nombre,
+                    'Subespecialidad': subespecialidad,
+                    'Tipo': kpis['tipo_medico'],
+                    'Total Facturado Vithas': kpis['importe_total'],
+                    'Total Cobrado OSA': kpis['importe_hhmm_total'],
+                    '% Cobrar': kpis['porcentaje_cobrar'],
+                    '% OSA': kpis['porcentaje_osa'],
+                    'A Cobrar Médico': kpis['total_a_cobrar'],
+                    'OSA Retiene': kpis['a_cobrar_osa']
+                }])
+                kpis_resumen.to_excel(writer, index=False, sheet_name='Resumen_KPIs')
+            
+            output.seek(0)
+            
+            st.download_button(
+                label=f"⬇️ Confirmar Descarga",
+                data=output,
+                file_name=f"detalle_{profesional_nombre.replace(', ', '_').replace(' ', '_')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+    else:
+        st.warning("No se encontraron las columnas necesarias para mostrar el detalle de servicios.")
 
 # -------------------------------------------------------------------
 # PANEL DE ADMINISTRADOR
