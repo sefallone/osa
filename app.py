@@ -8,8 +8,6 @@ import io
 import os
 import json
 from pathlib import Path
-import hashlib
-import hmac
 
 # -------------------------------------------------------------------
 # CONFIGURACIÓN DE COLORES CORPORATIVOS
@@ -26,7 +24,7 @@ COLORES = {
     "info": "#17a2b8"
 }
 
-# Configuración de la página con colores personalizados
+# Configuración de la página
 st.set_page_config(
     page_title="OSA Medical Analytics",
     page_icon="🏥",
@@ -119,40 +117,7 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # -------------------------------------------------------------------
-# DATOS DE USUARIOS (En producción, esto debería estar en GitHub Secrets o DB)
-# -------------------------------------------------------------------
-USUARIOS = {
-    "admin": {
-        "password": "admin123",  # Cambiar en producción
-        "nombre": "Administrador",
-        "rol": "admin",
-        "email": "admin@osa.com"
-    },
-    "fallone.jan": {
-        "password": "medico123",  # Cambiar en producción
-        "nombre": "Dr. Jan Fallone",
-        "rol": "medico",
-        "profesional": "FALLONE, JAN",
-        "email": "j.fallone@osa.com"
-    },
-    "ortega.juan": {
-        "password": "medico123",
-        "nombre": "Dr. Juan Pablo Ortega",
-        "rol": "medico",
-        "profesional": "ORTEGA RODRIGUEZ, JUAN PABLO",
-        "email": "jp.ortega@osa.com"
-    },
-    "esteban.ignacio": {
-        "password": "medico123",
-        "nombre": "Dr. Ignacio Esteban",
-        "rol": "medico",
-        "profesional": "ESTEBAN FELIU, IGNACIO",
-        "email": "i.esteban@osa.com"
-    }
-}
-
-# -------------------------------------------------------------------
-# PROFESIONALES_INFO (tu diccionario original)
+# PROFESIONALES_INFO (diccionario de médicos)
 # -------------------------------------------------------------------
 PROFESIONALES_INFO = {
     "FALLONE, JAN": {"especialidad": "HOMBRO Y CODO", "tipo": "CONSULTOR"},
@@ -169,7 +134,194 @@ PROFESIONALES_INFO = {
 }
 
 # -------------------------------------------------------------------
-# GESTIÓN DE DATOS PERSISTENTES (Simula base de datos con archivos)
+# CARGA DE USUARIOS DESDE STREAMLIT SECRETS
+# -------------------------------------------------------------------
+def cargar_usuarios():
+    """
+    Carga los usuarios y credenciales desde Streamlit Secrets.
+    En local usa .streamlit/secrets.toml si existe.
+    """
+    
+    try:
+        # Intentar cargar desde st.secrets (Streamlit Cloud)
+        admin_pass = st.secrets["usuarios"]["admin_password"]
+        medico_default = st.secrets["usuarios"]["medico_password"]
+        
+        # Credenciales específicas de médicos
+        if "credenciales_medicos" in st.secrets:
+            credenciales_medicos = dict(st.secrets["credenciales_medicos"])
+        else:
+            credenciales_medicos = {}
+            
+        st.success("✅ Configuración de usuarios cargada desde Streamlit Secrets")
+        
+    except Exception as e:
+        # Si no hay secrets, intentar cargar desde archivo local
+        try:
+            if os.path.exists('.streamlit/secrets.toml'):
+                import toml
+                secrets_local = toml.load('.streamlit/secrets.toml')
+                admin_pass = secrets_local["usuarios"]["admin_password"]
+                medico_default = secrets_local["usuarios"]["medico_password"]
+                credenciales_medicos = secrets_local.get("credenciales_medicos", {})
+                st.info("📁 Usando configuración local desde .streamlit/secrets.toml")
+            else:
+                # ⚠️ SOLO PARA DESARROLLO - NUNCA EN PRODUCCIÓN
+                admin_pass = "admin123"
+                medico_default = "medico123"
+                credenciales_medicos = {}
+                st.warning("⚠️ MODO DESARROLLO: Usando credenciales por defecto. Crea .streamlit/secrets.toml para producción.")
+        except:
+            # Último recurso - solo para pruebas
+            admin_pass = "admin123"
+            medico_default = "medico123"
+            credenciales_medicos = {}
+            st.warning("⚠️ MODO DESARROLLO: Usando credenciales por defecto")
+    
+    # Construir diccionario de usuarios
+    usuarios = {
+        "admin": {
+            "password": admin_pass,
+            "nombre": "Administrador",
+            "rol": "admin",
+            "email": "admin@osa.com"
+        }
+    }
+    
+    # Agregar médicos con sus credenciales específicas o la por defecto
+    medicos = {
+        "fallone.jan": {
+            "password": credenciales_medicos.get("fallone_jan", medico_default),
+            "nombre": "Dr. Jan Fallone",
+            "rol": "medico",
+            "profesional": "FALLONE, JAN",
+            "email": "j.fallone@osa.com"
+        },
+        "ortega.juan": {
+            "password": credenciales_medicos.get("ortega_juan", medico_default),
+            "nombre": "Dr. Juan Pablo Ortega",
+            "rol": "medico",
+            "profesional": "ORTEGA RODRIGUEZ, JUAN PABLO",
+            "email": "jp.ortega@osa.com"
+        },
+        "esteban.ignacio": {
+            "password": credenciales_medicos.get("esteban_ignacio", medico_default),
+            "nombre": "Dr. Ignacio Esteban",
+            "rol": "medico",
+            "profesional": "ESTEBAN FELIU, IGNACIO",
+            "email": "i.esteban@osa.com"
+        },
+        "pardo.albert": {
+            "password": credenciales_medicos.get("pardo_albert", medico_default),
+            "nombre": "Dr. Albert Pardo",
+            "rol": "medico",
+            "profesional": "PARDO I POL, ALBERT",
+            "email": "a.pardo@osa.com"
+        },
+        "alcantara.edgar": {
+            "password": credenciales_medicos.get("alcantara_edgar", medico_default),
+            "nombre": "Dr. Edgar Alcantara",
+            "rol": "medico",
+            "profesional": "ALCANTARA MORENO, EDGAR ALFREDO",
+            "email": "e.alcantara@osa.com"
+        },
+        "rius.xavier": {
+            "password": credenciales_medicos.get("rius_xavier", medico_default),
+            "nombre": "Dr. Xavier Rius",
+            "rol": "medico",
+            "profesional": "RIUS MORENO, XAVIER",
+            "email": "x.rius@osa.com"
+        },
+        "aguilar.marc": {
+            "password": credenciales_medicos.get("aguilar_marc", medico_default),
+            "nombre": "Dr. Marc Aguilar",
+            "rol": "medico",
+            "profesional": "AGUILAR GARCIA, MARC",
+            "email": "m.aguilar@osa.com"
+        },
+        "maio.tomas": {
+            "password": credenciales_medicos.get("maio_tomas", medico_default),
+            "nombre": "Dr. Tomas Maio",
+            "rol": "medico",
+            "profesional": "MAIO MÉNDEZ, TOMAS EDUARDO",
+            "email": "t.maio@osa.com"
+        },
+        "monsonet.pablo": {
+            "password": credenciales_medicos.get("monsonet_pablo", medico_default),
+            "nombre": "Dr. Pablo Monsonet",
+            "rol": "medico",
+            "profesional": "MONSONET VILLA, PABLO",
+            "email": "p.monsonet@osa.com"
+        },
+        "puigdellivol.jordi": {
+            "password": credenciales_medicos.get("puigdellivol_jordi", medico_default),
+            "nombre": "Dr. Jordi Puigdellivol",
+            "rol": "medico",
+            "profesional": "PUIGDELLIVOL GRIFELL, JORDI",
+            "email": "j.puigdellivol@osa.com"
+        },
+        "casaccia.marcelo": {
+            "password": credenciales_medicos.get("casaccia_marcelo", medico_default),
+            "nombre": "Dr. Marcelo Casaccia",
+            "rol": "medico",
+            "profesional": "CASACCIA, MARCELO AGUSTIN",
+            "email": "m.casaccia@osa.com"
+        }
+    }
+    
+    usuarios.update(medicos)
+    return usuarios
+
+# -------------------------------------------------------------------
+# AUTENTICACIÓN
+# -------------------------------------------------------------------
+def check_password():
+    """Sistema de autenticación con Streamlit Secrets"""
+    
+    # Cargar usuarios desde secrets
+    USUARIOS = cargar_usuarios()
+    
+    def login_form():
+        with st.form("Credentials"):
+            st.markdown(f"""
+            <div style='text-align: center; padding: 20px;'>
+                <h2 style='color: {COLORES['primary']};'>🏥 OSA Medical Analytics</h2>
+                <p style='color: {COLORES['primary']};'>Sistema de Análisis Médico</p>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            username = st.text_input("Usuario")
+            password = st.text_input("Contraseña", type="password")
+            submitted = st.form_submit_button("Iniciar Sesión", use_container_width=True)
+            
+            if submitted:
+                if username in USUARIOS and password == USUARIOS[username]["password"]:
+                    st.session_state["authentication_status"] = True
+                    st.session_state["username"] = username
+                    st.session_state["user_info"] = USUARIOS[username]
+                    st.rerun()
+                else:
+                    st.error("Usuario o contraseña incorrectos")
+    
+    if "authentication_status" not in st.session_state:
+        st.session_state["authentication_status"] = False
+    
+    if not st.session_state["authentication_status"]:
+        login_form()
+        return False
+    else:
+        return True
+
+def logout():
+    """Cerrar sesión"""
+    if st.sidebar.button("🚪 Cerrar Sesión", use_container_width=True):
+        for key in ["authentication_status", "username", "user_info"]:
+            if key in st.session_state:
+                del st.session_state[key]
+        st.rerun()
+
+# -------------------------------------------------------------------
+# GESTIÓN DE DATOS PERSISTENTES
 # -------------------------------------------------------------------
 class DataManager:
     """Gestiona el almacenamiento persistente de datos"""
@@ -235,55 +387,10 @@ class DataManager:
             return False
 
 # -------------------------------------------------------------------
-# AUTENTICACIÓN
-# -------------------------------------------------------------------
-def check_password():
-    """Sistema de autenticación simplificado"""
-    
-    def login_form():
-        with st.form("Credentials"):
-            st.markdown(f"""
-            <div style='text-align: center; padding: 20px;'>
-                <h2 style='color: {COLORES['primary']};'>🏥 OSA Medical Analytics</h2>
-                <p style='color: {COLORES['primary']};'>Sistema de Análisis Médico</p>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            username = st.text_input("Usuario")
-            password = st.text_input("Contraseña", type="password")
-            submitted = st.form_submit_button("Iniciar Sesión", use_container_width=True)
-            
-            if submitted:
-                if username in USUARIOS and password == USUARIOS[username]["password"]:
-                    st.session_state["authentication_status"] = True
-                    st.session_state["username"] = username
-                    st.session_state["user_info"] = USUARIOS[username]
-                    st.rerun()
-                else:
-                    st.error("Usuario o contraseña incorrectos")
-    
-    if "authentication_status" not in st.session_state:
-        st.session_state["authentication_status"] = False
-    
-    if not st.session_state["authentication_status"]:
-        login_form()
-        return False
-    else:
-        return True
-
-def logout():
-    """Cerrar sesión"""
-    if st.sidebar.button("🚪 Cerrar Sesión", use_container_width=True):
-        for key in ["authentication_status", "username", "user_info"]:
-            if key in st.session_state:
-                del st.session_state[key]
-        st.rerun()
-
-# -------------------------------------------------------------------
-# FUNCIONES DE PROCESAMIENTO (tus funciones originales mejoradas)
+# FUNCIONES DE PROCESAMIENTO
 # -------------------------------------------------------------------
 def procesar_datos(df):
-    """Procesa el DataFrame cargado (tu función original mejorada)"""
+    """Procesa el DataFrame cargado"""
     df_procesado = df.copy()
     
     # Convertir columnas de fecha
@@ -438,7 +545,7 @@ def dashboard_admin(df):
     """, unsafe_allow_html=True)
     
     # Filtros globales
-    col_f1, col_f2, col_f3, col_f4 = st.columns([2,2,2,1])
+    col_f1, col_f2, col_f3 = st.columns([2,2,2])
     
     with col_f1:
         if 'Fecha del Servicio' in df.columns:
@@ -460,17 +567,13 @@ def dashboard_admin(df):
         tipos_medico = ['TODOS'] + sorted(df['Tipo Médico'].unique().tolist())
         tipo_selected = st.selectbox("👨‍⚕️ Tipo de Médico", tipos_medico, key="admin_tipo")
     
-    with col_f4:
-        st.markdown("<br>", unsafe_allow_html=True)
-        aplicar_filtros = st.button("🔍 Aplicar Filtros", use_container_width=True)
-    
     # Aplicar filtros
     df_filtered = df.copy()
     
     if 'fecha_range' in locals() and len(fecha_range) == 2:
         df_filtered = df_filtered[
             (df_filtered['Fecha del Servicio'].dt.date >= fecha_range[0]) &
-            (df_filterred['Fecha del Servicio'].dt.date <= fecha_range[1])
+            (df_filtered['Fecha del Servicio'].dt.date <= fecha_range[1])
         ]
     
     if subesp_selected != 'TODAS':
@@ -556,10 +659,11 @@ def dashboard_admin(df):
             """, unsafe_allow_html=True)
         
         with col8:
+            promedio_medico = metricas['importe_hhmm_total'] / metricas['total_medicos'] if metricas['total_medicos'] > 0 else 0
             st.markdown(f"""
             <div class='stMetric'>
                 <label>📈 Promedio/Médico</label>
-                <div class='metric-highlight'>€{metricas['importe_hhmm_total']/metricas['total_medicos']:,.2f}</div>
+                <div class='metric-highlight'>€{promedio_medico:,.2f}</div>
                 <small>Facturación media</small>
             </div>
             """, unsafe_allow_html=True)
@@ -665,7 +769,7 @@ def dashboard_admin(df):
         )
 
 # -------------------------------------------------------------------
-# DASHBOARD MÉDICO (tu función original adaptada)
+# DASHBOARD MÉDICO
 # -------------------------------------------------------------------
 def dashboard_medico(df, profesional_nombre):
     """Dashboard específico para médicos"""
@@ -704,7 +808,7 @@ def dashboard_medico(df, profesional_nombre):
     </div>
     """, unsafe_allow_html=True)
     
-    # KPIs principales con diseño mejorado
+    # KPIs principales
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
@@ -838,34 +942,35 @@ def dashboard_medico(df, profesional_nombre):
         st.plotly_chart(fig_dist, use_container_width=True)
     
     with col_g2:
-        # Gráfico de evolución temporal (si hay suficientes datos)
+        # Gráfico de evolución temporal
         df_medico_mensual = df_medico.groupby('Mes-Año').agg({
             'Importe HHMM': 'sum',
             'Importe Total': 'sum'
         }).reset_index()
         
-        fig_evol = px.line(
-            df_medico_mensual,
-            x='Mes-Año',
-            y='Importe HHMM',
-            title='Evolución Mensual de Facturación',
-            markers=True,
-            color_discrete_sequence=[COLORES['primary']]
-        )
-        fig_evol.update_layout(
-            height=400,
-            title_x=0.5,
-            plot_bgcolor='white',
-            xaxis_title='Mes',
-            yaxis_title='Importe HHMM (€)'
-        )
-        fig_evol.update_traces(
-            line=dict(width=3),
-            marker=dict(size=8, color=COLORES['secondary'])
-        )
-        st.plotly_chart(fig_evol, use_container_width=True)
+        if len(df_medico_mensual) > 0:
+            fig_evol = px.line(
+                df_medico_mensual,
+                x='Mes-Año',
+                y='Importe HHMM',
+                title='Evolución Mensual de Facturación',
+                markers=True,
+                color_discrete_sequence=[COLORES['primary']]
+            )
+            fig_evol.update_layout(
+                height=400,
+                title_x=0.5,
+                plot_bgcolor='white',
+                xaxis_title='Mes',
+                yaxis_title='Importe HHMM (€)'
+            )
+            fig_evol.update_traces(
+                line=dict(width=3),
+                marker=dict(size=8, color=COLORES['secondary'])
+            )
+            st.plotly_chart(fig_evol, use_container_width=True)
     
-    # Análisis por prestación (tu código original)
+    # Análisis por prestación
     st.markdown("---")
     st.subheader("📋 Análisis por Tipo de Prestación")
     
@@ -878,8 +983,8 @@ def dashboard_medico(df, profesional_nombre):
         prestacion_analisis['% Médico'] = (prestacion_analisis['Monto Total'] / kpis['importe_hhmm_total']) * 100
         prestacion_analisis['Médico Recibe'] = prestacion_analisis['Monto Total'] * (kpis['porcentaje_cobrar'] / 100)
         prestacion_analisis['OSA Recibe'] = prestacion_analisis['Monto Total'] * (kpis['porcentaje_osa'] / 100)
+        prestacion_analisis['Precio Promedio'] = prestacion_analisis['Monto Total'] / prestacion_analisis['Cantidad']
         
-        # Tabla mejorada
         st.dataframe(
             prestacion_analisis,
             use_container_width=True,
@@ -888,6 +993,7 @@ def dashboard_medico(df, profesional_nombre):
                 "Descripción de Prestación": "Tipo de Prestación",
                 "Cantidad": st.column_config.NumberColumn("Unidades", format="%d"),
                 "Monto Total": st.column_config.NumberColumn("Monto Total OSA (€)", format="€%.2f"),
+                "Precio Promedio": st.column_config.NumberColumn("Precio Promedio (€)", format="€%.2f"),
                 "% Médico": st.column_config.NumberColumn("% del Total", format="%.1f%%"),
                 "Médico Recibe": st.column_config.NumberColumn("Médico Recibe (€)", format="€%.2f"),
                 "OSA Recibe": st.column_config.NumberColumn("OSA Retiene (€)", format="€%.2f")
@@ -895,7 +1001,7 @@ def dashboard_medico(df, profesional_nombre):
         )
 
 # -------------------------------------------------------------------
-# PANEL DE ADMINISTRADOR (CARGA DE DATOS)
+# PANEL DE ADMINISTRADOR
 # -------------------------------------------------------------------
 def panel_admin(df_actual):
     """Panel exclusivo para administradores"""
@@ -907,7 +1013,7 @@ def panel_admin(df_actual):
     </div>
     """, unsafe_allow_html=True)
     
-    tab1, tab2, tab3 = st.tabs(["📤 Carga de Datos", "📊 Dashboard General", "⚙️ Configuración"])
+    tab1, tab2, tab3 = st.tabs(["📤 Carga de Datos", "📊 Dashboard General", "ℹ️ Información"])
     
     with tab1:
         st.subheader("Cargar Nuevo Archivo de Datos")
@@ -926,7 +1032,7 @@ def panel_admin(df_actual):
                 
                 # Mostrar preview
                 st.success(f"✅ Archivo cargado exitosamente: {uploaded_file.name}")
-                st.info(f"📊 Registros: {len(df_procesado)} | 👥 Médicos: {df_procesado['Profesional'].nunique()}")
+                st.info(f"📊 Registros: {len(df_procesado):,} | 👥 Médicos: {df_procesado['Profesional'].nunique():,}")
                 
                 col1, col2 = st.columns(2)
                 
@@ -946,9 +1052,7 @@ def panel_admin(df_actual):
                 
                 # Confirmar guardado
                 if st.button("💾 Guardar Datos Permanentemente", use_container_width=True, type="primary"):
-                    # Guardar datos
                     if DataManager.save_dataframe(df_procesado):
-                        # Guardar metadatos
                         metadata = {
                             'fecha': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                             'archivo': uploaded_file.name,
@@ -989,13 +1093,27 @@ def panel_admin(df_actual):
             st.warning("⚠️ No hay datos cargados. Por favor, carga un archivo en la pestaña 'Carga de Datos'.")
     
     with tab3:
-        st.subheader("Configuración del Sistema")
+        st.subheader("Información del Sistema")
+        st.markdown(f"""
+        **Versión:** 2.0.0  
+        **Última actualización:** Febrero 2026  
+        **Colores corporativos:** {COLORES['primary']} / {COLORES['secondary']}
         
-        st.markdown("**Gestión de Usuarios**")
-        st.info("Aquí podrás gestionar los usuarios médicos en una versión futura.")
+        **Médicos configurados en el sistema:**
+        """)
         
-        st.markdown("**Configuración de Porcentajes**")
-        st.info("Configuración de porcentajes por defecto para cálculos.")
+        # Mostrar lista de médicos disponibles
+        medicos_sistema = []
+        for profesional in PROFESIONALES_INFO.keys():
+            info = PROFESIONALES_INFO[profesional]
+            medicos_sistema.append({
+                'Profesional': profesional,
+                'Especialidad': info['especialidad'],
+                'Tipo': info['tipo']
+            })
+        
+        df_medicos_sistema = pd.DataFrame(medicos_sistema)
+        st.dataframe(df_medicos_sistema, use_container_width=True, hide_index=True)
 
 # -------------------------------------------------------------------
 # FUNCIÓN PRINCIPAL
@@ -1029,7 +1147,7 @@ def main():
         df_global = DataManager.load_dataframe()
         
         if df_global is not None:
-            st.success(f"✅ Datos cargados: {len(df_global)} registros")
+            st.success(f"✅ Datos cargados: {len(df_global):,} registros")
             
             metadata = DataManager.get_upload_metadata()
             if metadata:
@@ -1045,7 +1163,6 @@ def main():
     
     # Área principal según el rol
     if rol == 'admin':
-        # Dashboard para administrador
         st.markdown(f"""
         <h1 style='color: {COLORES['primary']};'>🏥 OSA Medical Analytics</h1>
         <p style='color: {COLORES['secondary']}; font-size: 18px;'>Panel de Administración</p>
@@ -1054,7 +1171,6 @@ def main():
         panel_admin(df_global)
     
     elif rol == 'medico':
-        # Dashboard para médico
         profesional = user_info['profesional']
         
         if df_global is None or df_global.empty:
