@@ -547,16 +547,11 @@ def tabla_detalle_admin(df):
     # Mapeo de nombres de columna que podrían significar "Aseguradora"
     posibles_nombres_aseguradora = [
         'Aseguradora', 'aseguradora', 'ASEGURADORA',
-        'Aseguradora ', ' ASEGURADORA',  # con espacios
+        'Aseguradora ', ' ASEGURADORA',
         'Nombre Aseguradora', 'Compañía', 'CIA', 'Cia',
         'Aseguradora Nombre', 'Aseguradora Name',
-        'Aseguradora_Name', 'Aseguradora_Nombre',
-        'Aseguradora_Name', 'Aseguradora_Nombre',
-        'Aseguradora_Name', 'Aseguradora_Nombre',
         'Insurance', 'INSURANCE', 'insurance',
-        'Insurance Company', 'COMPANY', 'Company',
-        'Aseguradora_Name', 'Aseguradora_Nombre',
-        'Aseguradora_Name', 'Aseguradora_Nombre'
+        'Insurance Company', 'COMPANY', 'Company'
     ]
     
     # Buscar qué columna del DataFrame coincide con alguna de las posibles
@@ -652,10 +647,7 @@ def tabla_detalle_admin(df):
             aseguradora_filtro = st.selectbox("🏥 Filtrar por Aseguradora", aseguradoras, key="admin_filtro_aseguradora")
         else:
             aseguradora_filtro = 'TODAS'
-            st.info("ℹ️ Columna 'Aseguradora' no encontrada en el archivo. Nombres disponibles: " + 
-                   ", ".join([c for c in columnas_df if 'aseg' in c.lower() or 'insur' in c.lower() or 'cia' in c.lower()][:5]) 
-                   if any('aseg' in c.lower() or 'insur' in c.lower() or 'cia' in c.lower() for c in columnas_df) 
-                   else "No se detectó ninguna columna de aseguradora")
+            st.info("ℹ️ Columna 'Aseguradora' no encontrada en el archivo")
     
     # -----------------------------------------------------------------
     # PASO 8: APLICAR FILTROS
@@ -760,6 +752,575 @@ def tabla_detalle_admin(df):
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True
         )
+
+# -------------------------------------------------------------------
+# PROYECCIÓN GERENCIA - CÁLCULO DE PUNTO DE EQUILIBRIO
+# -------------------------------------------------------------------
+def proyeccion_gerencia(df):
+    """Calcula proyecciones financieras para gerencia"""
+    
+    st.markdown(f"""
+    <div class='custom-card'>
+        <h2 style='color: {COLORES['primary']}; margin-bottom: 0;'>📈 Proyección Gerencia</h2>
+        <p style='color: {COLORES['secondary']};'>Análisis de punto de equilibrio y márgenes OSA</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # -----------------------------------------------------------------
+    # GASTOS FIJOS MENSUALES
+    # -----------------------------------------------------------------
+    st.subheader("🏢 Gastos Fijos Mensuales OSA")
+    
+    col_g1, col_g2, col_g3, col_g4 = st.columns(4)
+    
+    with col_g1:
+        st.markdown(f"""
+        <div class='stMetric'>
+            <label>👥 SF</label>
+            <div style='font-size: 24px; font-weight: bold; color: {COLORES['primary']};'>
+                €3,290
+            </div>
+            <small>Costo mensual empresa</small>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col_g2:
+        st.markdown(f"""
+        <div class='stMetric'>
+            <label>👤 IR</label>
+            <div style='font-size: 24px; font-weight: bold; color: {COLORES['primary']};'>
+                €2,835
+            </div>
+            <small>Costo mensual empresa</small>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col_g3:
+        st.markdown(f"""
+        <div class='stMetric'>
+            <label>👨‍⚕️ Jefe Servicio</label>
+            <div style='font-size: 24px; font-weight: bold; color: {COLORES['primary']};'>
+                €3,000
+            </div>
+            <small>Honorarios mensuales</small>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col_g4:
+        st.markdown(f"""
+        <div class='stMetric'>
+            <label>🛡️ RC Profesional</label>
+            <div style='font-size: 24px; font-weight: bold; color: {COLORES['primary']};'>
+                €500
+            </div>
+            <small>Seguro responsabilidad civil</small>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    col_g5, col_g6, col_g7 = st.columns(3)
+    
+    with col_g5:
+        st.markdown(f"""
+        <div class='stMetric'>
+            <label>🌐 Otros (Web, Google, etc)</label>
+            <div style='font-size: 24px; font-weight: bold; color: {COLORES['primary']};'>
+                €100
+            </div>
+            <small>Mantenimiento, publicidad</small>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    # Calcular total gastos fijos
+    gastos_fijos = {
+        'SF': 3290,
+        'IR': 2835,
+        'Jefe Servicio': 3000,
+        'RC Profesional': 500,
+        'Otros': 100
+    }
+    
+    total_gastos_fijos = sum(gastos_fijos.values())
+    
+    with col_g6:
+        st.markdown(f"""
+        <div class='stMetric'>
+            <label>💰 TOTAL GASTOS FIJOS</label>
+            <div style='font-size: 28px; font-weight: bold; color: {COLORES['primary']};'>
+                €{total_gastos_fijos:,.2f}
+            </div>
+            <small>Mensuales</small>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col_g7:
+        st.markdown(f"""
+        <div class='stMetric'>
+            <label>📆 GASTOS ANUALES</label>
+            <div style='font-size: 28px; font-weight: bold; color: {COLORES['primary']};'>
+                €{total_gastos_fijos * 12:,.2f}
+            </div>
+            <small>Proyección anual</small>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    st.markdown("---")
+    
+    # -----------------------------------------------------------------
+    # ANÁLISIS DE MÁRGENES ACTUALES (CON DATOS REALES)
+    # -----------------------------------------------------------------
+    st.subheader("📊 Análisis de Márgenes Reales (Datos Cargados)")
+    
+    if df is not None and not df.empty:
+        # Calcular métricas globales
+        total_hhmm = df['Importe HHMM'].sum()
+        total_medicos = df['Profesional'].nunique()
+        
+        # Clasificar médicos por tipo
+        medicos_consultor = df[df['Tipo Médico'] == 'CONSULTOR']['Profesional'].nunique()
+        medicos_especialista = df[df['Tipo Médico'] == 'ESPECIALISTA']['Profesional'].nunique()
+        
+        # Calcular margen real promedio
+        total_pagar_medicos = 0
+        total_osa_retiene = 0
+        
+        for medico in df['Profesional'].unique():
+            df_med = df[df['Profesional'] == medico]
+            subesp = df_med['Subespecialidad'].iloc[0]
+            promedio, _, _ = calcular_promedio_subespecialidad(df, subesp)
+            kpis = calcular_a_cobrar_individual(df_med, promedio)
+            if kpis:
+                total_pagar_medicos += kpis['total_a_cobrar']
+                total_osa_retiene += kpis['a_cobrar_osa']
+        
+        margen_real_promedio = (total_osa_retiene / total_hhmm * 100) if total_hhmm > 0 else 0
+        
+        col_r1, col_r2, col_r3, col_r4 = st.columns(4)
+        
+        with col_r1:
+            st.metric(
+                "💰 Facturación OSA (HHMM)",
+                f"€{total_hhmm:,.2f}",
+                help="Total importe HHMM del período"
+            )
+        
+        with col_r2:
+            st.metric(
+                "💳 Pago a Médicos",
+                f"€{total_pagar_medicos:,.2f}",
+                help="Total a liquidar a médicos"
+            )
+        
+        with col_r3:
+            st.metric(
+                "🏥 OSA Retiene",
+                f"€{total_osa_retiene:,.2f}",
+                delta=f"{margen_real_promedio:.1f}% margen",
+                delta_color="normal",
+                help="Margen bruto OSA"
+            )
+        
+        with col_r4:
+            st.metric(
+                "👥 Composición Médicos",
+                f"{medicos_consultor + medicos_especialista}",
+                delta=f"{medicos_consultor} Consultores / {medicos_especialista} Especialistas",
+                delta_color="off",
+                help="Distribución por tipo"
+            )
+        
+        # Calcular cobertura de gastos con datos reales
+        meses_periodo = df['Mes-Año'].nunique()
+        osa_mensual_promedio = total_osa_retiene / meses_periodo if meses_periodo > 0 else 0
+        
+        col_c1, col_c2, col_c3 = st.columns(3)
+        
+        with col_c1:
+            st.metric(
+                "📅 Período analizado",
+                f"{meses_periodo} meses",
+                help="Meses con datos en el archivo"
+            )
+        
+        with col_c2:
+            st.metric(
+                "📊 OSA Mensual Promedio",
+                f"€{osa_mensual_promedio:,.2f}",
+                help="Margen OSA promedio por mes"
+            )
+        
+        with col_c3:
+            cobertura_gastos = (osa_mensual_promedio / total_gastos_fijos) * 100 if total_gastos_fijos > 0 else 0
+            st.metric(
+                "✅ Cobertura Gastos Fijos",
+                f"{cobertura_gastos:.1f}%",
+                delta="Superávit" if cobertura_gastos >= 100 else "Déficit",
+                delta_color="normal" if cobertura_gastos >= 100 else "inverse",
+                help=f"OSA mensual vs Gastos: €{osa_mensual_promedio:,.2f} / €{total_gastos_fijos:,.2f}"
+            )
+    else:
+        st.warning("⚠️ No hay datos cargados. Usando escenarios simulados para proyección.")
+        medicos_consultor = 0
+        medicos_especialista = 0
+        margen_real_promedio = 0
+        osa_mensual_promedio = 0
+    
+    st.markdown("---")
+    
+    # -----------------------------------------------------------------
+    # PROYECCIÓN DE ESCENARIOS
+    # -----------------------------------------------------------------
+    st.subheader("🎯 Proyección de Escenarios - Facturación Necesaria")
+    
+    st.markdown(f"""
+    <div style='background-color: {COLORES['background']}; padding: 20px; border-radius: 10px; margin-bottom: 20px;'>
+        <h4 style='color: {COLORES['primary']};'>📌 Punto de Equilibrio</h4>
+        <p>OSA necesita generar <strong>€{total_gastos_fijos:,.2f} mensuales</strong> en margen (lo que retiene) para cubrir gastos fijos.</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Selectores de escenario
+    col_s1, col_s2, col_s3 = st.columns(3)
+    
+    with col_s1:
+        st.markdown("**👨‍⚕️ Composición de Médicos**")
+        escenario_consultores = st.number_input(
+            "Nº Consultores",
+            min_value=0,
+            max_value=50,
+            value=max(medicos_consultor, 5),
+            step=1,
+            key="escenario_consultores"
+        )
+        
+        escenario_especialistas = st.number_input(
+            "Nº Especialistas",
+            min_value=0,
+            max_value=50,
+            value=max(medicos_especialista, 3),
+            step=1,
+            key="escenario_especialistas"
+        )
+    
+    with col_s2:
+        st.markdown("**📊 Distribución por Rendimiento**")
+        pct_encima_promedio = st.slider(
+            "% Médicos por encima del promedio",
+            min_value=0,
+            max_value=100,
+            value=40,
+            step=5,
+            help="Porcentaje de médicos que facturan por encima del promedio de su subespecialidad",
+            key="pct_encima"
+        )
+        
+        st.markdown(f"""
+        <div style='margin-top: 25px;'>
+            <small>Distribución:</small><br>
+            <strong>{pct_encima_promedio}%</strong> por encima (92%/90%)<br>
+            <strong>{100 - pct_encima_promedio}%</strong> por debajo (88%/85%)
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col_s3:
+        st.markdown("**💰 Facturación Media por Médico**")
+        facturacion_media = st.number_input(
+            "Facturación HHMM mensual media (€)",
+            min_value=1000,
+            max_value=100000,
+            value=20000,
+            step=1000,
+            help="Importe HHMM promedio por médico al mes",
+            key="facturacion_media"
+        )
+    
+    st.markdown("---")
+    
+    # -----------------------------------------------------------------
+    # CÁLCULOS DE PROYECCIÓN
+    # -----------------------------------------------------------------
+    
+    # Calcular porcentajes según distribución
+    total_medicos_escenario = escenario_consultores + escenario_especialistas
+    
+    # Distribución de médicos por rendimiento
+    medicos_encima = int(total_medicos_escenario * (pct_encima_promedio / 100))
+    medicos_debajo = total_medicos_escenario - medicos_encima
+    
+    # Distribución por tipo y rendimiento
+    consultores_encima = int(escenario_consultores * (pct_encima_promedio / 100))
+    consultores_debajo = escenario_consultores - consultores_encima
+    
+    especialistas_encima = int(escenario_especialistas * (pct_encima_promedio / 100))
+    especialistas_debajo = escenario_especialistas - especialistas_encima
+    
+    # Calcular márgenes individuales
+    margen_consultor_encima = 8.0
+    margen_consultor_debajo = 12.0
+    margen_especialista_encima = 10.0
+    margen_especialista_debajo = 15.0
+    
+    # Calcular margen ponderado
+    total_margen = (
+        consultores_encima * margen_consultor_encima +
+        consultores_debajo * margen_consultor_debajo +
+        especialistas_encima * margen_especialista_encima +
+        especialistas_debajo * margen_especialista_debajo
+    )
+    
+    margen_ponderado = total_margen / total_medicos_escenario if total_medicos_escenario > 0 else 0
+    
+    # Calcular facturación necesaria
+    facturacion_hhmm_necesaria = total_gastos_fijos / (margen_ponderado / 100) if margen_ponderado > 0 else 0
+    facturacion_vithas_necesaria = facturacion_hhmm_necesaria / 0.70
+    
+    # Facturación por médico
+    facturacion_hhmm_por_medico = facturacion_hhmm_necesaria / total_medicos_escenario if total_medicos_escenario > 0 else 0
+    
+    # -----------------------------------------------------------------
+    # RESULTADOS DE PROYECCIÓN
+    # -----------------------------------------------------------------
+    st.subheader("🎯 Resultados de Proyección")
+    
+    col_res1, col_res2, col_res3 = st.columns(3)
+    
+    with col_res1:
+        st.markdown(f"""
+        <div class='stMetric' style='background: linear-gradient(135deg, {COLORES['primary']} 0%, {COLORES['primary']}ee 100%);'>
+            <label style='color: white !important;'>📊 MARGEN PONDERADO</label>
+            <div style='font-size: 36px; font-weight: bold; color: white;'>
+                {margen_ponderado:.1f}%
+            </div>
+            <small style='color: rgba(255,255,255,0.9);'>Margen OSA según composición</small>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col_res2:
+        st.markdown(f"""
+        <div class='stMetric' style='background: linear-gradient(135deg, {COLORES['secondary']} 0%, {COLORES['secondary']}ee 100%);'>
+            <label style='color: {COLORES['primary']} !important;'>💰 FACTURACIÓN HHMM NECESARIA</label>
+            <div style='font-size: 36px; font-weight: bold; color: {COLORES['primary']};'>
+                €{facturacion_hhmm_necesaria:,.0f}
+            </div>
+            <small style='color: {COLORES['primary']};'>Mensual para cubrir gastos</small>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col_res3:
+        st.markdown(f"""
+        <div class='stMetric'>
+            <label>💳 FACTURACIÓN VITHAS (100%)</label>
+            <div style='font-size: 28px; font-weight: bold; color: {COLORES['primary']};'>
+                €{facturacion_vithas_necesaria:,.0f}
+            </div>
+            <small>Estimado al 70% liquidación</small>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    col_res4, col_res5, col_res6 = st.columns(3)
+    
+    with col_res4:
+        st.metric(
+            "👥 Total Médicos Necesarios",
+            f"{total_medicos_escenario}",
+            help=f"{escenario_consultores} Consultores / {escenario_especialistas} Especialistas"
+        )
+    
+    with col_res5:
+        st.metric(
+            "📈 Facturación HHMM por Médico",
+            f"€{facturacion_hhmm_por_medico:,.0f}",
+            delta=f"vs €{facturacion_media:,.0f} objetivo",
+            delta_color="off"
+        )
+    
+    with col_res6:
+        cobertura_objetivo = (facturacion_hhmm_por_medico / facturacion_media) * 100 if facturacion_media > 0 else 0
+        st.metric(
+            "🎯 % Objetivo por Médico",
+            f"{cobertura_objetivo:.1f}%",
+            help="Porcentaje de la facturación media objetivo necesaria"
+        )
+    
+    st.markdown("---")
+    
+    # -----------------------------------------------------------------
+    # TABLA DE DISTRIBUCIÓN DETALLADA
+    # -----------------------------------------------------------------
+    st.subheader("📋 Distribución Detallada del Escenario")
+    
+    distribucion_data = []
+    
+    if consultores_encima > 0:
+        distribucion_data.append({
+            'Tipo': 'Consultor',
+            'Rendimiento': 'Por encima',
+            'Cantidad': consultores_encima,
+            'Margen OSA': f'{margen_consultor_encima}%',
+            '% Cobrar': '92%',
+            'Aporte por médico (€)': facturacion_media * (margen_consultor_encima / 100),
+            'Aporte total (€)': consultores_encima * facturacion_media * (margen_consultor_encima / 100)
+        })
+    
+    if consultores_debajo > 0:
+        distribucion_data.append({
+            'Tipo': 'Consultor',
+            'Rendimiento': 'Por debajo',
+            'Cantidad': consultores_debajo,
+            'Margen OSA': f'{margen_consultor_debajo}%',
+            '% Cobrar': '88%',
+            'Aporte por médico (€)': facturacion_media * (margen_consultor_debajo / 100),
+            'Aporte total (€)': consultores_debajo * facturacion_media * (margen_consultor_debajo / 100)
+        })
+    
+    if especialistas_encima > 0:
+        distribucion_data.append({
+            'Tipo': 'Especialista',
+            'Rendimiento': 'Por encima',
+            'Cantidad': especialistas_encima,
+            'Margen OSA': f'{margen_especialista_encima}%',
+            '% Cobrar': '90%',
+            'Aporte por médico (€)': facturacion_media * (margen_especialista_encima / 100),
+            'Aporte total (€)': especialistas_encima * facturacion_media * (margen_especialista_encima / 100)
+        })
+    
+    if especialistas_debajo > 0:
+        distribucion_data.append({
+            'Tipo': 'Especialista',
+            'Rendimiento': 'Por debajo',
+            'Cantidad': especialistas_debajo,
+            'Margen OSA': f'{margen_especialista_debajo}%',
+            '% Cobrar': '85%',
+            'Aporte por médico (€)': facturacion_media * (margen_especialista_debajo / 100),
+            'Aporte total (€)': especialistas_debajo * facturacion_media * (margen_especialista_debajo / 100)
+        })
+    
+    df_distribucion = pd.DataFrame(distribucion_data)
+    
+    if not df_distribucion.empty:
+        st.dataframe(
+            df_distribucion,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Tipo": "Tipo Médico",
+                "Rendimiento": "Rendimiento",
+                "Cantidad": st.column_config.NumberColumn("Nº Médicos", format="%d"),
+                "Margen OSA": "Margen OSA",
+                "% Cobrar": "% Médico",
+                "Aporte por médico (€)": st.column_config.NumberColumn("Aporte x Médico", format="€%.0f"),
+                "Aporte total (€)": st.column_config.NumberColumn("Aporte Total", format="€%.0f")
+            }
+        )
+        
+        # Totales
+        col_t1, col_t2, col_t3 = st.columns(3)
+        
+        with col_t1:
+            total_aportes = df_distribucion['Aporte total (€)'].sum()
+            st.metric(
+                "💰 TOTAL APORTE OSA ESTIMADO",
+                f"€{total_aportes:,.0f}",
+                delta=f"vs €{total_gastos_fijos:,.0f} gastos",
+                delta_color="normal" if total_aportes >= total_gastos_fijos else "inverse"
+            )
+        
+        with col_t2:
+            st.metric(
+                "🎯 DIFERENCIA vs GASTOS",
+                f"€{total_aportes - total_gastos_fijos:,.0f}",
+                delta="Superávit" if total_aportes >= total_gastos_fijos else "Déficit",
+                delta_color="normal" if total_aportes >= total_gastos_fijos else "inverse"
+            )
+        
+        with col_t3:
+            st.metric(
+                "📊 MARGEN SOBRE GASTOS",
+                f"{(total_aportes / total_gastos_fijos - 1) * 100:.1f}%" if total_gastos_fijos > 0 else "0%",
+                help="Porcentaje de gastos cubiertos"
+            )
+    
+    st.markdown("---")
+    
+    # -----------------------------------------------------------------
+    # RECOMENDACIONES
+    # -----------------------------------------------------------------
+    st.subheader("💡 Recomendaciones")
+    
+    if facturacion_hhmm_por_medico > facturacion_media * 1.2:
+        recomendacion = "🔴 **Alta exigencia**: La facturación por médico necesaria es muy superior al objetivo. Se requiere:"
+        items = [
+            "Aumentar el número de médicos",
+            "Mejorar el rendimiento de médicos actuales (pasar a 'por encima')",
+            "Incrementar el ratio de especialistas (mayor margen)",
+            "Revisar estructura de gastos"
+        ]
+    elif facturacion_hhmm_por_medico < facturacion_media * 0.8:
+        recomendacion = "🟢 **Escenario sostenible**: La facturación necesaria está por debajo del objetivo."
+        items = [
+            "El modelo es rentable con la composición actual",
+            "Posibilidad de reinvertir en crecimiento",
+            "Evaluar aumento de plantilla"
+        ]
+    else:
+        recomendacion = "🟡 **Escenario alcanzable**: La facturación necesaria está dentro del rango objetivo."
+        items = [
+            "Mantener la composición actual de médicos",
+            "Enfocar en mantener a médicos por encima del promedio",
+            "Seguimiento mensual de márgenes"
+        ]
+    
+    st.markdown(f"""
+    <div style='background-color: {COLORES['background']}; padding: 20px; border-radius: 10px;'>
+        <h4 style='color: {COLORES['primary']};'>{recomendacion}</h4>
+        <ul style='margin-top: 10px;'>
+            {''.join([f'<li>{item}</li>' for item in items])}
+        </ul>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Botón de descarga de proyección
+    if st.button("📥 Descargar Proyección (Excel)", use_container_width=True, type="primary"):
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            # Hoja 1: Gastos fijos
+            df_gastos = pd.DataFrame([
+                {'Concepto': 'SF', 'Monto': 3290},
+                {'Concepto': 'IR', 'Monto': 2835},
+                {'Concepto': 'Jefe Servicio', 'Monto': 3000},
+                {'Concepto': 'RC Profesional', 'Monto': 500},
+                {'Concepto': 'Otros', 'Monto': 100},
+                {'Concepto': 'TOTAL', 'Monto': total_gastos_fijos}
+            ])
+            df_gastos.to_excel(writer, index=False, sheet_name='Gastos_Fijos')
+            
+            # Hoja 2: Proyección
+            df_proyeccion = pd.DataFrame([{
+                'Composición': f'{escenario_consultores}C / {escenario_especialistas}E',
+                'Total Médicos': total_medicos_escenario,
+                '% Encima Promedio': f'{pct_encima_promedio}%',
+                'Margen Ponderado': f'{margen_ponderado:.1f}%',
+                'Facturación HHMM Necesaria': facturacion_hhmm_necesaria,
+                'Facturación Vithas Necesaria': facturacion_vithas_necesaria,
+                'Facturación HHMM x Médico': facturacion_hhmm_por_medico,
+                'Gastos Fijos Mensuales': total_gastos_fijos,
+                'Aporte OSA Estimado': total_aportes if 'total_aportes' in locals() else 0,
+                'Diferencia': (total_aportes - total_gastos_fijos) if 'total_aportes' in locals() else 0
+            }])
+            df_proyeccion.to_excel(writer, index=False, sheet_name='Proyeccion')
+            
+            # Hoja 3: Distribución detallada
+            if not df_distribucion.empty:
+                df_distribucion.to_excel(writer, index=False, sheet_name='Distribucion')
+        
+        output.seek(0)
+        
+        st.download_button(
+            label="⬇️ Confirmar Descarga Proyección",
+            data=output,
+            file_name=f"proyeccion_gerencia_{datetime.now().strftime('%Y%m%d')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+
 # -------------------------------------------------------------------
 # DASHBOARD ADMINISTRADOR
 # -------------------------------------------------------------------
@@ -1248,7 +1809,7 @@ def dashboard_medico(df, profesional_nombre):
     st.markdown("---")
     
     # -------------------------------------------------------------------
-    # TABLA ORIGINAL FILTRADA - NUEVA SECCIÓN
+    # TABLA ORIGINAL FILTRADA - CORREGIDA
     # -------------------------------------------------------------------
     st.subheader("📋 Detalle de Servicios")
     
@@ -1273,16 +1834,21 @@ def dashboard_medico(df, profesional_nombre):
         # Renombrar columnas
         df_detalle = df_detalle.rename(columns={k: v for k, v in columnas_deseadas.items() if k in df_detalle.columns})
         
-        # Asegurar el orden correcto de columnas
-        orden_columnas = [
-            'Fecha del servicio',
-            'Profesional', 
-            'Aseguradora',
+        # Verificar si la columna Aseguradora existe
+        tiene_aseguradora = 'Aseguradora' in df_detalle.columns
+        
+        # Construir orden de columnas dinámicamente
+        orden_columnas = ['Fecha del servicio', 'Profesional']
+        
+        if tiene_aseguradora:
+            orden_columnas.append('Aseguradora')
+        
+        orden_columnas.extend([
             'Descripción de Prestación',
             'Monto Cobrado por Vithas (€)',
             '% Liquidación',
             'Importe Cobrado OSA (€)'
-        ]
+        ])
         
         # Solo mantener columnas que existen
         orden_columnas = [col for col in orden_columnas if col in df_detalle.columns]
@@ -1292,32 +1858,38 @@ def dashboard_medico(df, profesional_nombre):
         if 'Fecha del servicio' in df_detalle.columns:
             df_detalle['Fecha del servicio'] = pd.to_datetime(df_detalle['Fecha del servicio']).dt.strftime('%d/%m/%Y')
         
+        # Configuración de columnas para la tabla
+        column_config = {
+            "Fecha del servicio": "Fecha",
+            "Profesional": "Médico",
+            "Descripción de Prestación": "Prestación",
+            "Monto Cobrado por Vithas (€)": st.column_config.NumberColumn(
+                "Monto Vithas (€)",
+                format="€%.2f",
+                help="Importe total al 100%"
+            ),
+            "% Liquidación": st.column_config.NumberColumn(
+                "% Liquidación",
+                format="%.0f%%",
+                help="Porcentaje que liquida Vithas"
+            ),
+            "Importe Cobrado OSA (€)": st.column_config.NumberColumn(
+                "Importe OSA (€)",
+                format="€%.2f",
+                help="Importe que cobra OSA (descontado % Vithas)"
+            )
+        }
+        
+        # Agregar Aseguradora a la configuración solo si existe
+        if tiene_aseguradora:
+            column_config["Aseguradora"] = "Aseguradora"
+        
         # Mostrar la tabla
         st.dataframe(
             df_detalle,
             use_container_width=True,
             hide_index=True,
-            column_config={
-                "Fecha del servicio": "Fecha",
-                "Profesional": "Médico",
-                "Aseguradora": "Aseguradora",
-                "Descripción de Prestación": "Prestación",
-                "Monto Cobrado por Vithas (€)": st.column_config.NumberColumn(
-                    "Monto Vithas (€)",
-                    format="€%.2f",
-                    help="Importe total al 100%"
-                ),
-                "% Liquidación": st.column_config.NumberColumn(
-                    "% Liquidación",
-                    format="%.0f%%",
-                    help="Porcentaje que liquida Vithas"
-                ),
-                "Importe Cobrado OSA (€)": st.column_config.NumberColumn(
-                    "Importe OSA (€)",
-                    format="€%.2f",
-                    help="Importe que cobra OSA (descontado % Vithas)"
-                )
-            }
+            column_config=column_config
         )
         
         # Botón de descarga para la tabla detallada
@@ -1352,7 +1924,7 @@ def dashboard_medico(df, profesional_nombre):
         st.warning("No se encontraron las columnas necesarias para mostrar el detalle de servicios.")
 
 # -------------------------------------------------------------------
-# PANEL DE ADMINISTRADOR
+# PANEL DE ADMINISTRADOR - ACTUALIZADO CON PESTAÑA DE PROYECCIÓN
 # -------------------------------------------------------------------
 def panel_admin(df_actual):
     """Panel exclusivo para administradores"""
@@ -1364,7 +1936,8 @@ def panel_admin(df_actual):
     </div>
     """, unsafe_allow_html=True)
     
-    tab1, tab2, tab3 = st.tabs(["📤 Carga de Datos", "📊 Dashboard General", "ℹ️ Información"])
+    # AGREGAR LA NUEVA PESTAÑA DE PROYECCIÓN GERENCIA
+    tab1, tab2, tab3, tab4 = st.tabs(["📤 Carga de Datos", "📊 Dashboard General", "📈 Proyección Gerencia", "ℹ️ Información"])
     
     with tab1:
         st.subheader("Cargar Nuevo Archivo de Datos")
@@ -1443,7 +2016,15 @@ def panel_admin(df_actual):
         else:
             st.warning("⚠️ No hay datos cargados. Por favor, carga un archivo en la pestaña 'Carga de Datos'.")
     
+    # NUEVA PESTAÑA DE PROYECCIÓN GERENCIA
     with tab3:
+        if df_actual is not None and not df_actual.empty:
+            proyeccion_gerencia(df_actual)
+        else:
+            # Si no hay datos, mostrar proyección con escenario simulado
+            proyeccion_gerencia(None)
+    
+    with tab4:
         st.subheader("Información del Sistema")
         st.markdown(f"""
         **Versión:** 2.0.0  
