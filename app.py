@@ -141,11 +141,51 @@ st.markdown(f"""
         font-size: 14px;
         font-weight: bold;
     }}
+    
+    /* Header con logo */
+    .header-container {{
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 10px 0;
+        margin-bottom: 20px;
+        border-bottom: 2px solid {COLORES['secondary']};
+    }}
+    
+    .logo-container {{
+        display: flex;
+        align-items: center;
+        gap: 15px;
+    }}
+    
+    .company-name {{
+        font-size: 24px;
+        font-weight: bold;
+        color: {COLORES['primary']};
+        text-align: right;
+    }}
+    
+    .title-container {{
+        margin-top: 10px;
+        margin-bottom: 20px;
+    }}
+    
+    .main-title {{
+        font-size: 32px;
+        font-weight: bold;
+        color: {COLORES['primary']};
+        margin-bottom: 5px;
+    }}
+    
+    .subtitle {{
+        font-size: 18px;
+        color: {COLORES['secondary']};
+    }}
 </style>
 """, unsafe_allow_html=True)
 
 # -------------------------------------------------------------------
-# PROFESIONALES_INFO - Diccionario de médicos
+# PROFESIONALES_INFO - Diccionario de médicos ACTUALIZADO
 # -------------------------------------------------------------------
 PROFESIONALES_INFO = {
     "FALLONE, JAN": {"especialidad": "HOMBRO Y CODO", "tipo": "CONSULTOR"},
@@ -158,11 +198,19 @@ PROFESIONALES_INFO = {
     "MAIO MÉNDEZ, TOMAS EDUARDO": {"especialidad": "RODILLA", "tipo": "ESPECIALISTA"},
     "MONSONET VILLA, PABLO": {"especialidad": "RODILLA", "tipo": "CONSULTOR"},
     "PUIGDELLIVOL GRIFELL, JORDI": {"especialidad": "RODILLA", "tipo": "CONSULTOR"},
-    "CASACCIA, MARCELO AGUSTIN": {"especialidad": "RODILLA", "tipo": "CONSULTOR"}
+    "CASACCIA, MARCELO AGUSTIN": {"especialidad": "RODILLA", "tipo": "CONSULTOR"},
+    # Nuevos médicos
+    "GALLARDO CALERO, IRENE": {"especialidad": "MANO", "tipo": "CONSULTOR"},
+    "FERNANDEZ DE RETANA, PABLO": {"especialidad": "PIE Y TOBILLO", "tipo": "CONSULTOR"},
+    "LECHA NADAL, NIL": {"especialidad": "PIE Y TOBILLO", "tipo": "ESPECIALISTA"},
+    "JORDAN GASCON, MARC": {"especialidad": "CADERA", "tipo": "ESPECIALISTA"},
+    "BENITO CASTILLO, DAVID": {"especialidad": "CADERA", "tipo": "CONSULTOR"},
+    "PASSACANTANDO, FRANCO": {"especialidad": "ORTOPEDIA INFANTIL", "tipo": "CONSULTOR"},
+    "COROMINAS FRANCES, LAURA": {"especialidad": "ORTOPEDIA INFANTIL", "tipo": "CONSULTOR"}
 }
 
 # -------------------------------------------------------------------
-# CARGA DE USUARIOS DESDE STREAMLIT SECRETS
+# CARGA DE USUARIOS DESDE STREAMLIT SECRETS (SIN MENSAJE DE ÉXITO)
 # -------------------------------------------------------------------
 def cargar_usuarios():
     """
@@ -181,8 +229,8 @@ def cargar_usuarios():
         else:
             credenciales_medicos = {}
             
-        st.success("✅ Configuración de usuarios cargada desde Streamlit Secrets")
-        
+        # Eliminado el mensaje de éxito
+            
     except Exception as e:
         # Si no hay secrets, intentar cargar desde archivo local
         try:
@@ -192,19 +240,19 @@ def cargar_usuarios():
                 admin_pass = secrets_local["usuarios"]["admin_password"]
                 medico_default = secrets_local["usuarios"]["medico_password"]
                 credenciales_medicos = secrets_local.get("credenciales_medicos", {})
-                st.info("📁 Usando configuración local desde .streamlit/secrets.toml")
+                # Eliminado el mensaje de info
             else:
                 # SOLO PARA DESARROLLO - NUNCA EN PRODUCCIÓN
                 admin_pass = "admin123"
                 medico_default = "medico123"
                 credenciales_medicos = {}
-                st.warning("⚠️ MODO DESARROLLO: Usando credenciales por defecto. Crea .streamlit/secrets.toml para producción.")
+                # Eliminado el mensaje de warning
         except:
             # Último recurso - solo para pruebas
             admin_pass = "admin123"
             medico_default = "medico123"
             credenciales_medicos = {}
-            st.warning("⚠️ MODO DESARROLLO: Usando credenciales por defecto")
+            # Eliminado el mensaje de warning
     
     # Construir diccionario de usuarios
     usuarios = {
@@ -294,11 +342,100 @@ def cargar_usuarios():
             "rol": "medico",
             "profesional": "CASACCIA, MARCELO AGUSTIN",
             "email": "m.casaccia@osa.com"
+        },
+        # Nuevos médicos
+        "gallardo.irene": {
+            "password": credenciales_medicos.get("gallardo_irene", medico_default),
+            "nombre": "Dra. Irene Gallardo",
+            "rol": "medico",
+            "profesional": "GALLARDO CALERO, IRENE",
+            "email": "i.gallardo@osa.com"
+        },
+        "fernandez.pablo": {
+            "password": credenciales_medicos.get("fernandez_pablo", medico_default),
+            "nombre": "Dr. Pablo Fernandez",
+            "rol": "medico",
+            "profesional": "FERNANDEZ DE RETANA, PABLO",
+            "email": "p.fernandez@osa.com"
+        },
+        "lecha.nil": {
+            "password": credenciales_medicos.get("lecha_nil", medico_default),
+            "nombre": "Dr. Nil Lecha",
+            "rol": "medico",
+            "profesional": "LECHA NADAL, NIL",
+            "email": "n.lecha@osa.com"
+        },
+        "jordan.marc": {
+            "password": credenciales_medicos.get("jordan_marc", medico_default),
+            "nombre": "Dr. Marc Jordan",
+            "rol": "medico",
+            "profesional": "JORDAN GASCON, MARC",
+            "email": "m.jordan@osa.com"
+        },
+        "benito.david": {
+            "password": credenciales_medicos.get("benito_david", medico_default),
+            "nombre": "Dr. David Benito",
+            "rol": "medico",
+            "profesional": "BENITO CASTILLO, DAVID",
+            "email": "d.benito@osa.com"
+        },
+        "passacantando.franco": {
+            "password": credenciales_medicos.get("passacantando_franco", medico_default),
+            "nombre": "Dr. Franco Passacantando",
+            "rol": "medico",
+            "profesional": "PASSACANTANDO, FRANCO",
+            "email": "f.passacantando@osa.com"
+        },
+        "corominas.laura": {
+            "password": credenciales_medicos.get("corominas_laura", medico_default),
+            "nombre": "Dra. Laura Corominas",
+            "rol": "medico",
+            "profesional": "COROMINAS FRANCES, LAURA",
+            "email": "l.corominas@osa.com"
         }
     }
     
     usuarios.update(medicos)
     return usuarios
+
+# -------------------------------------------------------------------
+# FUNCIÓN PARA MOSTRAR HEADER CON LOGO
+# -------------------------------------------------------------------
+def mostrar_header():
+    """Muestra el header con logo y nombre de la empresa"""
+    
+    # Intentar cargar el logo
+    logo_path = "logo.png"
+    logo_exists = os.path.exists(logo_path)
+    
+    col_logo, col_title, col_name = st.columns([1, 2, 2])
+    
+    with col_logo:
+        if logo_exists:
+            st.image(logo_path, width=80)
+        else:
+            # Placeholder si no existe el logo
+            st.markdown(f"""
+            <div style="width:80px; height:80px; background-color:{COLORES['primary']}; border-radius:10px; display:flex; align-items:center; justify-content:center;">
+                <span style="color:white; font-size:24px;">🏥</span>
+            </div>
+            """, unsafe_allow_html=True)
+    
+    with col_title:
+        st.markdown(f"""
+        <div style="margin-top:15px;">
+            <span style="font-size:20px; font-weight:bold; color:{COLORES['primary']};">OSA Análisis Financiero</span>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col_name:
+        st.markdown(f"""
+        <div style="text-align:right; margin-top:15px;">
+            <span style="font-size:24px; font-weight:bold; color:{COLORES['primary']};">Orthopaedic Specialist Alliance</span>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    st.markdown("---")
 
 # -------------------------------------------------------------------
 # AUTENTICACIÓN
@@ -311,10 +448,12 @@ def check_password():
     
     def login_form():
         with st.form("Credentials"):
+            # Mostrar header en login
+            mostrar_header()
+            
             st.markdown(f"""
             <div style='text-align: center; padding: 20px;'>
-                <h2 style='color: {COLORES['primary']};'>🏥 OSA Medical Analytics</h2>
-                <p style='color: {COLORES['primary']};'>Sistema de Análisis Médico</p>
+                <h2 style='color: {COLORES['primary']}'>Sistema de Análisis Médico</h2>
             </div>
             """, unsafe_allow_html=True)
             
@@ -782,7 +921,7 @@ def tabla_detalle_admin(df):
         )
 
 # -------------------------------------------------------------------
-# PROYECCIÓN GERENCIA
+# PROYECCIÓN GERENCIA - ACTUALIZADA
 # -------------------------------------------------------------------
 def proyeccion_gerencia(df):
     """Calcula proyecciones financieras para gerencia"""
@@ -795,7 +934,7 @@ def proyeccion_gerencia(df):
     """, unsafe_allow_html=True)
     
     # -----------------------------------------------------------------
-    # GASTOS FIJOS MENSUALES
+    # GASTOS FIJOS MENSUALES - ACTUALIZADOS
     # -----------------------------------------------------------------
     st.subheader("🏢 Gastos Fijos Mensuales OSA")
     
@@ -858,18 +997,30 @@ def proyeccion_gerencia(df):
         </div>
         """, unsafe_allow_html=True)
     
+    with col_g6:
+        st.markdown(f"""
+        <div class='stMetric'>
+            <label>⚖️ Despacho legal y laboral</label>
+            <div style='font-size: 24px; font-weight: bold; color: {COLORES['primary']};'>
+                €400
+            </div>
+            <small>Asesoría legal y laboral</small>
+        </div>
+        """, unsafe_allow_html=True)
+    
     # Calcular total gastos fijos
     gastos_fijos = {
         'SF': 3290,
         'IR': 2835,
         'Jefe Servicio': 3000,
         'RC Profesional': 500,
-        'Otros': 100
+        'Otros': 100,
+        'Despacho legal': 400
     }
     
     total_gastos_fijos = sum(gastos_fijos.values())
     
-    with col_g6:
+    with col_g7:
         st.markdown(f"""
         <div class='stMetric'>
             <label>💰 TOTAL GASTOS FIJOS</label>
@@ -877,17 +1028,6 @@ def proyeccion_gerencia(df):
                 €{total_gastos_fijos:,.2f}
             </div>
             <small>Mensuales</small>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    with col_g7:
-        st.markdown(f"""
-        <div class='stMetric'>
-            <label>📆 GASTOS ANUALES</label>
-            <div style='font-size: 28px; font-weight: bold; color: {COLORES['primary']};'>
-                €{total_gastos_fijos * 12:,.2f}
-            </div>
-            <small>Proyección anual</small>
         </div>
         """, unsafe_allow_html=True)
     
@@ -985,6 +1125,61 @@ def proyeccion_gerencia(df):
                 delta_color="normal" if cobertura_gastos >= 100 else "inverse",
                 help=f"OSA mensual vs Gastos: €{osa_mensual_promedio:,.2f} / €{total_gastos_fijos:,.2f}"
             )
+        
+        # NUEVO KPI: Diferencia a pagar por Socios
+        diferencia_socios = total_gastos_fijos - osa_mensual_promedio
+        
+        st.markdown("---")
+        st.subheader("💰 Distribución a Socios")
+        
+        col_s1, col_s2, col_s3, col_s4 = st.columns(4)
+        
+        with col_s1:
+            st.markdown(f"""
+            <div class='stMetric' style='background-color: #fff3e0;'>
+                <label style='color: {COLORES['primary']};'>💶 Diferencia a pagar por Socios</label>
+                <div style='font-size: 28px; font-weight: bold; color: {COLORES['primary']};'>
+                    €{max(diferencia_socios, 0):,.2f}
+                </div>
+                <small>Total Gastos - OSA Retiene</small>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with col_s2:
+            aporte_fallone = max(diferencia_socios, 0) * 0.70
+            st.markdown(f"""
+            <div class='stMetric'>
+                <label>👤 Fallone (70%)</label>
+                <div style='font-size: 24px; font-weight: bold; color: {COLORES['primary']};'>
+                    €{aporte_fallone:,.2f}
+                </div>
+                <small>Aporte mensual</small>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with col_s3:
+            aporte_puigdellivol = max(diferencia_socios, 0) * 0.225
+            st.markdown(f"""
+            <div class='stMetric'>
+                <label>👤 Puigdellivol (22.5%)</label>
+                <div style='font-size: 24px; font-weight: bold; color: {COLORES['primary']};'>
+                    €{aporte_puigdellivol:,.2f}
+                </div>
+                <small>Aporte mensual</small>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with col_s4:
+            aporte_ortega = max(diferencia_socios, 0) * 0.075
+            st.markdown(f"""
+            <div class='stMetric'>
+                <label>👤 Ortega (7.5%)</label>
+                <div style='font-size: 24px; font-weight: bold; color: {COLORES['primary']};'>
+                    €{aporte_ortega:,.2f}
+                </div>
+                <small>Aporte mensual</small>
+            </div>
+            """, unsafe_allow_html=True)
     else:
         st.warning("⚠️ No hay datos cargados. Usando escenarios simulados para proyección.")
         medicos_consultor = 0
@@ -1317,6 +1512,7 @@ def proyeccion_gerencia(df):
                 {'Concepto': 'Jefe Servicio', 'Monto': 3000},
                 {'Concepto': 'RC Profesional', 'Monto': 500},
                 {'Concepto': 'Otros', 'Monto': 100},
+                {'Concepto': 'Despacho legal y laboral', 'Monto': 400},
                 {'Concepto': 'TOTAL', 'Monto': total_gastos_fijos}
             ])
             df_gastos.to_excel(writer, index=False, sheet_name='Gastos_Fijos')
@@ -2395,7 +2591,7 @@ def dashboard_admin(df):
         tabla_detalle_admin(df_filtered)
 
 # -------------------------------------------------------------------
-# DASHBOARD MÉDICO - CON PESTAÑA DE MATCH PERSONAL
+# DASHBOARD MÉDICO - CON PESTAÑA DE MATCH PERSONAL Y ESTILOS MEJORADOS
 # -------------------------------------------------------------------
 def dashboard_medico(df, profesional_nombre):
     """Dashboard específico para médicos"""
@@ -2421,12 +2617,15 @@ def dashboard_medico(df, profesional_nombre):
     # Información de metadatos de carga
     metadata = DataManager.get_upload_metadata()
     
-    # Header personalizado
+    # Header personalizado con colores mejorados
     st.markdown(f"""
     <div class='custom-card' style='background: linear-gradient(135deg, {COLORES['primary']} 0%, {COLORES['primary']}ee 100%);'>
-        <h2 style='color: white !important; margin-bottom: 5px;'>👨‍⚕️ {profesional_nombre}</h2>
-        <p style='color: {COLORES['secondary']} !important; font-size: 18px; margin-bottom: 0;'>
-            {subespecialidad} • {kpis['tipo_medico']}
+        <h2 style='color: {COLORES['secondary']} !important; margin-bottom: 5px; font-size: 28px;'>👨‍⚕️ {profesional_nombre}</h2>
+        <p style='color: white !important; font-size: 20px; margin-bottom: 0; font-weight: 500;'>
+            {subespecialidad}
+        </p>
+        <p style='color: {COLORES['secondary']} !important; font-size: 16px; margin-top: 5px; font-weight: bold;'>
+            {kpis['tipo_medico']}
         </p>
         <p style='color: rgba(255,255,255,0.8); font-size: 14px; margin-top: 10px;'>
             📅 Última actualización: {metadata.get('fecha', 'No disponible') if metadata else 'No disponible'}
@@ -2953,13 +3152,11 @@ def main():
         st.markdown("---")
         logout()
     
+    # Mostrar header en área principal
+    mostrar_header()
+    
     # Área principal según el rol
     if rol == 'admin':
-        st.markdown(f"""
-        <h1 style='color: {COLORES['primary']};'>🏥 OSA Medical Analytics</h1>
-        <p style='color: {COLORES['secondary']}; font-size: 18px;'>Panel de Administración</p>
-        """, unsafe_allow_html=True)
-        
         panel_admin(df_global)
     
     elif rol == 'medico':
