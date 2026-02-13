@@ -1766,6 +1766,15 @@ def match_archivos():
                         file_name=f"resumen_match_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     )
+
+                                    # -----------------------------------------------------------------
+                # PASO 8: GUARDAR ARCHIVOS PARA LOS MÉDICOS
+                # -----------------------------------------------------------------
+                # Guardar los archivos originales para que los médicos puedan consultarlos
+                DataManager.save_dataframe(df1, 'archivo1_match.parquet')
+                DataManager.save_dataframe(df2, 'archivo2_match.parquet')
+                
+                st.success("✅ Archivos guardados. Los médicos ya pueden ver su match personal.")
     
     else:
         st.info("👆 Por favor, sube ambos archivos para realizar el match.")
@@ -2015,6 +2024,9 @@ def dashboard_admin(df):
 
 # -------------------------------------------------------------------
 # DASHBOARD MÉDICO
+# -------------------------------------------------------------------
+# -------------------------------------------------------------------
+# DASHBOARD MÉDICO - CON PESTAÑA DE MATCH PERSONAL
 # -------------------------------------------------------------------
 def dashboard_medico(df, profesional_nombre):
     """Dashboard específico para médicos"""
@@ -2371,7 +2383,28 @@ def dashboard_medico(df, profesional_nombre):
             )
     else:
         st.warning("No se encontraron las columnas necesarias para mostrar el detalle de servicios.")
-
+    
+    st.markdown("---")
+    
+    # -------------------------------------------------------------------
+    # MATCH PERSONAL (SOLO PARA EL MÉDICO)
+    # -------------------------------------------------------------------
+    with st.expander("🔍 Ver Match de Pagos (vs archivo de administrador)", expanded=False):
+        st.info("Para ver tu match personal, el administrador debe haber subido los dos archivos en su panel.")
+        
+        # Cargar los archivos de match desde el DataManager
+        archivo1_match = DataManager.load_dataframe('archivo1_match.parquet')
+        archivo2_match = DataManager.load_dataframe('archivo2_match.parquet')
+        
+        if archivo1_match is not None and archivo2_match is not None:
+            # Usar la función de match personal
+            match_personal_medico(archivo1_match, archivo2_match, profesional_nombre)
+        else:
+            st.warning("El administrador aún no ha subido los archivos para realizar el match.")
+            
+            # Botón para solicitar al admin (opcional)
+            if st.button("📧 Notificar al administrador", use_container_width=True):
+                st.info("Funcionalidad de notificación en desarrollo. Por ahora, contacta al administrador directamente.")
 # -------------------------------------------------------------------
 # PANEL DE ADMINISTRADOR - ACTUALIZADO CON PESTAÑA DE MATCH
 # -------------------------------------------------------------------
