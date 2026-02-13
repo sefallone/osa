@@ -1352,6 +1352,9 @@ def proyeccion_gerencia(df):
 # -------------------------------------------------------------------
 # NUEVA FUNCIÓN: MATCH DE ARCHIVOS
 # -------------------------------------------------------------------
+# -------------------------------------------------------------------
+# FUNCIÓN DE MATCH DE ARCHIVOS - VERSIÓN CORREGIDA (NORMALIZA NOMBRES)
+# -------------------------------------------------------------------
 def match_archivos():
     """Compara dos archivos Excel (Mes finalizado real vs Mes Pagado) y encuentra coincidencias"""
     
@@ -1361,6 +1364,30 @@ def match_archivos():
         <p style='color: {COLORES['secondary']};'>Compara lo que debería pagarse vs lo que realmente se pagó</p>
     </div>
     """, unsafe_allow_html=True)
+    
+    # Función auxiliar para normalizar nombres de médicos
+    def normalizar_nombre_medico(nombre):
+        """
+        Normaliza el nombre del médico para poder comparar:
+        - Elimina comas
+        - Convierte a mayúsculas
+        - Elimina espacios extras
+        - Ordena apellido y nombre de forma consistente
+        """
+        if pd.isna(nombre):
+            return ""
+        
+        nombre_str = str(nombre).strip().upper()
+        
+        # Eliminar comas y espacios múltiples
+        nombre_sin_comas = nombre_str.replace(',', ' ')
+        nombre_sin_comas = ' '.join(nombre_sin_comas.split())
+        
+        # Dividir en partes y ordenar alfabéticamente
+        partes = nombre_sin_comas.split()
+        partes_ordenadas = sorted(partes)
+        
+        return ' '.join(partes_ordenadas)
     
     # Explicación del proceso
     with st.expander("ℹ️ ¿Cómo funciona este match?", expanded=False):
@@ -1379,7 +1406,12 @@ def match_archivos():
         - Columna: `Descripción de Prestación`
         - Columna: `Profesional`
         
-        Si **las 4 columnas coinciden**, la fila se considera como **"Pagado correctamente"**.
+        **Importante:** Los nombres de los médicos se normalizan automáticamente:
+        - Se eliminan comas
+        - Se convierten a mayúsculas
+        - Se ordenan las palabras alfabéticamente
+        
+        Si **las 4 columnas coinciden** después de la normalización, la fila se considera como **"Pagado correctamente"**.
         """)
     
     # Crear dos columnas para los archivos
@@ -1454,18 +1486,37 @@ def match_archivos():
                 df1_norm['Fecha_norm'] = pd.to_datetime(df1_norm['Fecha'], errors='coerce').dt.date
                 df2_norm['Fecha_norm'] = pd.to_datetime(df2_norm['Fecha del Servicio'], errors='coerce').dt.date
                 
-                # Normalizar texto (quitar espacios extras, pasar a mayúsculas)
+                # Normalizar paciente (quitar espacios, mayúsculas)
                 df1_norm['Paciente_norm'] = df1_norm['Paciente'].astype(str).str.strip().str.upper()
                 df2_norm['Paciente_norm'] = df2_norm['NHC Paciente'].astype(str).str.strip().str.upper()
                 
+                # Normalizar prestación
                 df1_norm['Prestacion_norm'] = df1_norm['Denomin.prestación'].astype(str).str.strip().str.upper()
                 df2_norm['Prestacion_norm'] = df2_norm['Descripción de Prestación'].astype(str).str.strip().str.upper()
                 
-                df1_norm['Medico_norm'] = df1_norm['Médico de tratamiento (nombre)'].astype(str).str.strip().str.upper()
-                df2_norm['Medico_norm'] = df2_norm['Profesional'].astype(str).str.strip().str.upper()
+                # -----------------------------------------------------------------
+                # PASO 2: NORMALIZAR NOMBRES DE MÉDICOS (ELIMINAR COMAS)
+                # -----------------------------------------------------------------
+                # Aplicar la función de normalización a los nombres de médicos
+                df1_norm['Medico_norm'] = df1_norm['Médico de tratamiento (nombre)'].apply(normalizar_nombre_medico)
+                df2_norm['Medico_norm'] = df2_norm['Profesional'].apply(normalizar_nombre_medico)
+                
+                # Mostrar ejemplos de normalización para verificar
+                with st.expander("🔍 Ver ejemplos de normalización de nombres", expanded=False):
+                    col_ex1, col_ex2 = st.columns(2)
+                    
+                    with col_ex1:
+                        st.markdown("**Archivo 1 - Nombres originales vs normalizados:**")
+                        ejemplos_df1 = df1_norm[['Médico de tratamiento (nombre)', 'Medico_norm']].dropna().head(10)
+                        st.dataframe(ejemplos_df1, use_container_width=True)
+                    
+                    with col_ex2:
+                        st.markdown("**Archivo 2 - Nombres originales vs normalizados:**")
+                        ejemplos_df2 = df2_norm[['Profesional', 'Medico_norm']].dropna().head(10)
+                        st.dataframe(ejemplos_df2, use_container_width=True)
                 
                 # -----------------------------------------------------------------
-                # PASO 2: CREAR COLUMNA LLAVE PARA MATCH
+                # PASO 3: CREAR COLUMNA LLAVE PARA MATCH
                 # -----------------------------------------------------------------
                 df1_norm['llave_match'] = (
                     df1_norm['Fecha_norm'].astype(str) + '|' +
@@ -1482,7 +1533,7 @@ def match_archivos():
                 )
                 
                 # -----------------------------------------------------------------
-                # PASO 3: ENCONTRAR COINCIDENCIAS
+                # PASO 4: ENCONTRAR COINCIDENCIAS
                 # -----------------------------------------------------------------
                 
                 # Crear conjunto de llaves del archivo 2 (lo pagado)
@@ -1498,7 +1549,7 @@ def match_archivos():
                 df_no_pagados = df1[~df1_norm['Match']].copy()
                 
                 # -----------------------------------------------------------------
-                # PASO 4: MOSTRAR RESULTADOS
+                # PASO 5: MOSTRAR RESULTADOS
                 # -----------------------------------------------------------------
                 
                 st.markdown("---")
@@ -1547,14 +1598,14 @@ def match_archivos():
                 st.markdown("---")
                 
                 # -----------------------------------------------------------------
-                # PASO 5: FILTROS POR PROFESIONAL Y DESCRIPCIÓN DE PRESTACIÓN
+                # PASO 6: FILTROS POR PROFESIONAL Y DESCRIPCIÓN DE PRESTACIÓN
                 # -----------------------------------------------------------------
                 st.subheader("🔍 Análisis Detallado con Filtros")
                 
                 col_f1, col_f2 = st.columns(2)
                 
                 with col_f1:
-                    # Obtener lista de profesionales únicos del archivo 1
+                    # Obtener lista de profesionales únicos del archivo 1 (usando el original, no el normalizado)
                     profesionales = ['TODOS'] + sorted(df1['Médico de tratamiento (nombre)'].dropna().unique().tolist())
                     profesional_filtro = st.selectbox(
                         "👨‍⚕️ Filtrar por Profesional",
@@ -1611,7 +1662,7 @@ def match_archivos():
                     )
                 
                 # -----------------------------------------------------------------
-                # PASO 6: MOSTRAR TABLAS
+                # PASO 7: MOSTRAR TABLAS
                 # -----------------------------------------------------------------
                 
                 tab1, tab2, tab3 = st.tabs(["✅ Pagados", "❌ No Pagados", "📊 Resumen por Profesional"])
