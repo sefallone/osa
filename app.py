@@ -1350,7 +1350,7 @@ def proyeccion_gerencia(df):
         )
 
 # -------------------------------------------------------------------
-# FUNCIÓN DE MATCH DE ARCHIVOS (PARA ADMIN)
+# FUNCIÓN DE MATCH DE ARCHIVOS (PARA ADMIN) - CORREGIDA
 # -------------------------------------------------------------------
 def match_archivos():
     """Compara dos archivos Excel (Mes finalizado real vs Mes Pagado) y encuentra coincidencias"""
@@ -1411,8 +1411,8 @@ def match_archivos():
         Si **las 4 columnas coinciden** después de la normalización, la fila se considera como **"Pagado correctamente"**.
         
         **Nuevas columnas añadidas:**
-        - En pestaña "Pagados": Columna "Cobrado OSA" (Importe HHMM del Archivo 2)
-        - En pestaña "No Pagados": Columna "Por Cobrar OSA" (Importe HHMM del Archivo 1)
+        - En pestaña "Pagados": Columna "Cobrado OSA (€)" (Importe HHMM del Archivo 2)
+        - En pestaña "No Pagados": Columna "Por Cobrar OSA (€)" (SIEMPRE 0, ya que no aparecen en el archivo de pagos)
         """)
     
     # Crear dos columnas para los archivos
@@ -1550,32 +1550,34 @@ def match_archivos():
                 df_no_pagados = df1[~df1_norm['Match']].copy()
                 
                 # -----------------------------------------------------------------
-                # PASO 5: AÑADIR COLUMNAS DE IMPORTES
+                # PASO 5: AÑADIR COLUMNAS DE IMPORTES - CORREGIDO
                 # -----------------------------------------------------------------
                 
-                # Para los pagados, añadir columna "Cobrado OSA" con el Importe HHMM del archivo 2
+                # Para los pagados, añadir columna "Cobrado OSA (€)" con el Importe HHMM del archivo 2
                 if not df_match.empty:
                     # Crear un diccionario para mapear llave_match a Importe HHMM del archivo 2
-                    df2_norm['Importe_HHMM_Archivo2'] = pd.to_numeric(df2_norm.get('Importe HHMM', 0), errors='coerce')
+                    # Asegurarse de que la columna Importe HHMM existe en df2
+                    if 'Importe HHMM' in df2.columns:
+                        df2_norm['Importe_HHMM_Archivo2'] = pd.to_numeric(df2['Importe HHMM'], errors='coerce')
+                    else:
+                        df2_norm['Importe_HHMM_Archivo2'] = 0
+                    
                     mapa_importes = dict(zip(df2_norm['llave_match'], df2_norm['Importe_HHMM_Archivo2']))
                     
                     # Añadir la columna a df_match
                     df_match_con_importes = df_match.copy()
                     df_match_con_importes['Cobrado OSA (€)'] = df_match_con_importes.index.map(
-                        lambda idx: mapa_importes.get(df1_norm.loc[idx, 'llave_match'], 0)
+                        lambda idx: mapa_importes.get(df1_norm.loc[idx, 'llave_match'], 0) if idx in df1_norm.index else 0
                     )
                 else:
                     df_match_con_importes = df_match.copy()
                     df_match_con_importes['Cobrado OSA (€)'] = 0
                 
-                # Para los no pagados, añadir columna "Por Cobrar OSA" con el Importe HHMM del archivo 1
+                # Para los no pagados, añadir columna "Por Cobrar OSA (€)" con valor 0
+                # CORREGIDO: Siempre 0 porque no aparecen en el archivo de pagos
                 if not df_no_pagados.empty:
-                    # Añadir la columna a df_no_pagados
                     df_no_pagados_con_importes = df_no_pagados.copy()
-                    # Buscar el importe en el archivo 1 para cada registro
-                    df_no_pagados_con_importes['Por Cobrar OSA (€)'] = df_no_pagados_con_importes.index.map(
-                        lambda idx: pd.to_numeric(df1.loc[idx].get('Importe HHMM', 0), errors='coerce')
-                    )
+                    df_no_pagados_con_importes['Por Cobrar OSA (€)'] = 0  # Siempre 0
                 else:
                     df_no_pagados_con_importes = df_no_pagados.copy()
                     df_no_pagados_con_importes['Por Cobrar OSA (€)'] = 0
@@ -1742,7 +1744,7 @@ def match_archivos():
                 with tab2:
                     st.subheader(f"Registros No Pagados ({len(df_no_pagados_filtrado)})")
                     if not df_no_pagados_filtrado.empty:
-                        # Seleccionar columnas a mostrar incluyendo Por Cobrar OSA
+                        # Seleccionar columnas a mostrar incluyendo Por Cobrar OSA (siempre 0)
                         if 'Por Cobrar OSA (€)' in df_no_pagados_filtrado.columns:
                             st.dataframe(
                                 df_no_pagados_filtrado,
@@ -1752,7 +1754,7 @@ def match_archivos():
                                     "Por Cobrar OSA (€)": st.column_config.NumberColumn(
                                         "Por Cobrar OSA (€)",
                                         format="€%.2f",
-                                        help="Importe HHMM del Archivo 1 (pendiente)"
+                                        help="SIEMPRE 0 - No aparecen en el archivo de pagos"
                                     )
                                 }
                             )
@@ -1781,14 +1783,13 @@ def match_archivos():
                 with tab3:
                     st.subheader("Resumen por Profesional")
                     
-                    # Crear resumen por profesional con las nuevas columnas
+                    # Crear resumen por profesional con las nuevas columnas - CORREGIDO
                     resumen_profesional = []
                     
                     for profesional in df1['Médico de tratamiento (nombre)'].dropna().unique():
                         # Filtrar registros del profesional
                         df_prof = df1[df1['Médico de tratamiento (nombre)'] == profesional]
                         df_prof_match = df_match[df_match['Médico de tratamiento (nombre)'] == profesional]
-                        df_prof_nomatch = df_no_pagados[df_no_pagados['Médico de tratamiento (nombre)'] == profesional]
                         
                         total_registros = len(df_prof)
                         pagados = len(df_prof_match)
@@ -1799,19 +1800,17 @@ def match_archivos():
                         # Para pagados, buscar el importe en el archivo 2
                         cobrado_total = 0
                         for idx in df_prof_match.index:
-                            llave = df1_norm.loc[idx, 'llave_match'] if idx in df1_norm.index else None
-                            if llave and llave in llaves_pagadas:
-                                # Buscar en df2_norm
-                                registro_pagado = df2_norm[df2_norm['llave_match'] == llave]
-                                if not registro_pagado.empty:
-                                    importe = pd.to_numeric(registro_pagado.iloc[0].get('Importe HHMM', 0), errors='coerce')
-                                    cobrado_total += importe if pd.notna(importe) else 0
+                            if idx in df1_norm.index:
+                                llave = df1_norm.loc[idx, 'llave_match']
+                                if llave and llave in llaves_pagadas:
+                                    # Buscar en df2_norm
+                                    registro_pagado = df2_norm[df2_norm['llave_match'] == llave]
+                                    if not registro_pagado.empty and 'Importe HHMM' in df2.columns:
+                                        importe = pd.to_numeric(registro_pagado.iloc[0].get('Importe HHMM', 0), errors='coerce')
+                                        cobrado_total += importe if pd.notna(importe) else 0
                         
-                        # Para no pagados, sumar importe del archivo 1
-                        por_cobrar_total = 0
-                        for idx in df_prof_nomatch.index:
-                            importe = pd.to_numeric(df1.loc[idx].get('Importe HHMM', 0), errors='coerce')
-                            por_cobrar_total += importe if pd.notna(importe) else 0
+                        # Para no pagados, el importe es 0 (CORREGIDO)
+                        por_cobrar_total = 0  # Siempre 0
                         
                         resumen_profesional.append({
                             'Profesional': profesional,
@@ -1820,7 +1819,7 @@ def match_archivos():
                             'No Pagados': no_pagados,
                             '% Pago': f"{porcentaje_pago:.1f}%",
                             'Cobrado (€)': cobrado_total,
-                            'Por Cobrar (€)': por_cobrar_total
+                            'Por Cobrar (€)': por_cobrar_total  # Siempre 0
                         })
                     
                     df_resumen = pd.DataFrame(resumen_profesional)
@@ -1871,7 +1870,7 @@ def match_archivos():
         st.info("👆 Por favor, sube ambos archivos para realizar el match.")
 
 # -------------------------------------------------------------------
-# MATCH PERSONAL PARA MÉDICOS (SOLO SUS DATOS)
+# MATCH PERSONAL PARA MÉDICOS (SOLO SUS DATOS) - CORREGIDO
 # -------------------------------------------------------------------
 def match_personal_medico(df_archivo1, df_archivo2, nombre_medico):
     """
@@ -1968,13 +1967,17 @@ def match_personal_medico(df_archivo1, df_archivo2, nombre_medico):
         df_no_pagados = df_archivo1.loc[indices_no_match] if not indices_no_match.empty else pd.DataFrame()
         
         # -----------------------------------------------------------------
-        # AÑADIR COLUMNAS DE IMPORTES PARA EL MÉDICO
+        # AÑADIR COLUMNAS DE IMPORTES PARA EL MÉDICO - CORREGIDO
         # -----------------------------------------------------------------
         
-        # Para los pagados, añadir columna "Cobrado OSA" con el Importe HHMM del archivo 2
+        # Para los pagados, añadir columna "Cobrado OSA (€)" con el Importe HHMM del archivo 2
         if not df_match.empty:
             # Crear un diccionario para mapear llave_match a Importe HHMM del archivo 2
-            df2_medico['Importe_HHMM_Archivo2'] = pd.to_numeric(df2_medico.get('Importe HHMM', 0), errors='coerce')
+            if 'Importe HHMM' in df_archivo2.columns:
+                df2_medico['Importe_HHMM_Archivo2'] = pd.to_numeric(df2_medico['Importe HHMM'], errors='coerce')
+            else:
+                df2_medico['Importe_HHMM_Archivo2'] = 0
+            
             mapa_importes = dict(zip(df2_medico['llave_match'], df2_medico['Importe_HHMM_Archivo2']))
             
             # Añadir la columna a df_match
@@ -1986,12 +1989,11 @@ def match_personal_medico(df_archivo1, df_archivo2, nombre_medico):
             df_match_con_importes = df_match.copy()
             df_match_con_importes['Cobrado OSA (€)'] = 0
         
-        # Para los no pagados, añadir columna "Por Cobrar OSA" con el Importe HHMM del archivo 1
+        # Para los no pagados, añadir columna "Por Cobrar OSA (€)" con valor 0
+        # CORREGIDO: Siempre 0 porque no aparecen en el archivo de pagos
         if not df_no_pagados.empty:
             df_no_pagados_con_importes = df_no_pagados.copy()
-            df_no_pagados_con_importes['Por Cobrar OSA (€)'] = df_no_pagados_con_importes.index.map(
-                lambda idx: pd.to_numeric(df_archivo1.loc[idx].get('Importe HHMM', 0), errors='coerce')
-            )
+            df_no_pagados_con_importes['Por Cobrar OSA (€)'] = 0  # Siempre 0
         else:
             df_no_pagados_con_importes = df_no_pagados.copy()
             df_no_pagados_con_importes['Por Cobrar OSA (€)'] = 0
@@ -2048,7 +2050,8 @@ def match_personal_medico(df_archivo1, df_archivo2, nombre_medico):
                         column_config={
                             "Cobrado OSA (€)": st.column_config.NumberColumn(
                                 "Cobrado OSA (€)",
-                                format="€%.2f"
+                                format="€%.2f",
+                                help="Importe HHMM del Archivo 2 (pagado)"
                             )
                         }
                     )
@@ -2080,7 +2083,7 @@ def match_personal_medico(df_archivo1, df_archivo2, nombre_medico):
                 columnas_mostrar = ['Fecha', 'Paciente', 'Denomin.prestación']
                 columnas_existentes = [col for col in columnas_mostrar if col in df_no_pagados_con_importes.columns]
                 
-                # Mostrar con columna de Por Cobrar OSA
+                # Mostrar con columna de Por Cobrar OSA (siempre 0)
                 if 'Por Cobrar OSA (€)' in df_no_pagados_con_importes.columns:
                     st.dataframe(
                         df_no_pagados_con_importes[columnas_existentes + ['Por Cobrar OSA (€)']],
@@ -2089,7 +2092,8 @@ def match_personal_medico(df_archivo1, df_archivo2, nombre_medico):
                         column_config={
                             "Por Cobrar OSA (€)": st.column_config.NumberColumn(
                                 "Por Cobrar OSA (€)",
-                                format="€%.2f"
+                                format="€%.2f",
+                                help="SIEMPRE 0 - No aparecen en el archivo de pagos"
                             )
                         }
                     )
@@ -2115,7 +2119,7 @@ def match_personal_medico(df_archivo1, df_archivo2, nombre_medico):
             else:
                 st.success("¡Todos tus servicios han sido pagados! ✅")
         
-        # Resumen ejecutivo con importes
+        # Resumen ejecutivo con importes - CORREGIDO
         st.markdown("---")
         st.subheader("📋 Resumen Ejecutivo")
         
@@ -2123,7 +2127,7 @@ def match_personal_medico(df_archivo1, df_archivo2, nombre_medico):
         if total_servicios > 0:
             # Calcular totales de importes
             total_cobrado = df_match_con_importes['Cobrado OSA (€)'].sum() if not df_match_con_importes.empty and 'Cobrado OSA (€)' in df_match_con_importes.columns else 0
-            total_por_cobrar = df_no_pagados_con_importes['Por Cobrar OSA (€)'].sum() if not df_no_pagados_con_importes.empty and 'Por Cobrar OSA (€)' in df_no_pagados_con_importes.columns else 0
+            total_por_cobrar = 0  # Siempre 0
             
             col_r1, col_r2 = st.columns(2)
             
@@ -2142,8 +2146,8 @@ def match_personal_medico(df_archivo1, df_archivo2, nombre_medico):
                 <div style='background-color: #ffebee; padding: 20px; border-radius: 10px;'>
                     <h4 style='color: #c62828;'>⏳ Pendiente</h4>
                     <p style='font-size: 18px;'><strong>{len(df_no_pagados_con_importes)} servicios</strong> ({len(df_no_pagados_con_importes)/total_servicios*100:.1f}%)</p>
-                    <p style='font-size: 16px;'><strong>Total por cobrar: €{total_por_cobrar:,.2f}</strong></p>
-                    <p>Estos servicios aún no aparecen en pagos.</p>
+                    <p style='font-size: 16px;'><strong>Total por cobrar: €0.00</strong> (no aparecen en pagos)</p>
+                    <p>Estos servicios aún no aparecen en pagos. El importe pendiente es 0 porque no están registrados como pagados.</p>
                 </div>
                 """, unsafe_allow_html=True)
 
@@ -2883,7 +2887,7 @@ def panel_admin(df_actual):
     with tab5:
         st.subheader("Información del Sistema")
         st.markdown(f"""
-        **Versión:** 3.1.0  
+        **Versión:** 3.2.0  
         **Última actualización:** Febrero 2026  
         **Colores corporativos:** {COLORES['primary']} / {COLORES['secondary']}
         
