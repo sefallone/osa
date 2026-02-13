@@ -113,6 +113,34 @@ st.markdown(f"""
         font-weight: bold;
         color: {COLORES['primary']};
     }}
+    
+    /* Badges para resultados del match */
+    .badge-success {{
+        background-color: #28a745;
+        color: white;
+        padding: 5px 10px;
+        border-radius: 20px;
+        font-size: 14px;
+        font-weight: bold;
+    }}
+    
+    .badge-warning {{
+        background-color: #ffc107;
+        color: black;
+        padding: 5px 10px;
+        border-radius: 20px;
+        font-size: 14px;
+        font-weight: bold;
+    }}
+    
+    .badge-danger {{
+        background-color: #dc3545;
+        color: white;
+        padding: 5px 10px;
+        border-radius: 20px;
+        font-size: 14px;
+        font-weight: bold;
+    }}
 </style>
 """, unsafe_allow_html=True)
 
@@ -532,7 +560,7 @@ def calcular_dashboard_general(df):
     }
 
 # -------------------------------------------------------------------
-# FUNCIÓN PARA TABLA DETALLADA DE ADMIN - VERSIÓN ULTRA ROBUSTA
+# FUNCIÓN PARA TABLA DETALLADA DE ADMIN
 # -------------------------------------------------------------------
 def tabla_detalle_admin(df):
     """Genera la tabla detallada para administradores con todos los médicos"""
@@ -754,7 +782,7 @@ def tabla_detalle_admin(df):
         )
 
 # -------------------------------------------------------------------
-# PROYECCIÓN GERENCIA - CÁLCULO DE PUNTO DE EQUILIBRIO
+# PROYECCIÓN GERENCIA
 # -------------------------------------------------------------------
 def proyeccion_gerencia(df):
     """Calcula proyecciones financieras para gerencia"""
@@ -1322,7 +1350,377 @@ def proyeccion_gerencia(df):
         )
 
 # -------------------------------------------------------------------
-# DASHBOARD ADMINISTRADOR
+# NUEVA FUNCIÓN: MATCH DE ARCHIVOS
+# -------------------------------------------------------------------
+def match_archivos():
+    """Compara dos archivos Excel (Mes finalizado real vs Mes Pagado) y encuentra coincidencias"""
+    
+    st.markdown(f"""
+    <div class='custom-card'>
+        <h2 style='color: {COLORES['primary']}; margin-bottom: 0;'>🔍 Match de Pagos</h2>
+        <p style='color: {COLORES['secondary']};'>Compara lo que debería pagarse vs lo que realmente se pagó</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Explicación del proceso
+    with st.expander("ℹ️ ¿Cómo funciona este match?", expanded=False):
+        st.markdown("""
+        **Criterios de comparación:**
+        
+        **Archivo 1 - Mes finalizado real** (Lo que deberían haber pagado)
+        - Columna: `Fecha`
+        - Columna: `Paciente`
+        - Columna: `Denomin.prestación`
+        - Columna: `Médico de tratamiento (nombre)`
+        
+        **Archivo 2 - Mes Pagado** (Lo que realmente pagaron)
+        - Columna: `Fecha del Servicio`
+        - Columna: `NHC Paciente`
+        - Columna: `Descripción de Prestación`
+        - Columna: `Profesional`
+        
+        Si **las 4 columnas coinciden**, la fila se considera como **"Pagado correctamente"**.
+        """)
+    
+    # Crear dos columnas para los archivos
+    col_arch1, col_arch2 = st.columns(2)
+    
+    with col_arch1:
+        st.markdown(f"**📁 Archivo 1: Mes finalizado real**")
+        archivo1 = st.file_uploader(
+            "Sube el archivo de lo que deberían haber pagado",
+            type=['xlsx', 'xls'],
+            key="match_archivo1"
+        )
+        
+        if archivo1 is not None:
+            st.success(f"✅ Archivo cargado: {archivo1.name}")
+    
+    with col_arch2:
+        st.markdown(f"**📁 Archivo 2: Mes Pagado**")
+        archivo2 = st.file_uploader(
+            "Sube el archivo de lo que realmente pagaron",
+            type=['xlsx', 'xls'],
+            key="match_archivo2"
+        )
+        
+        if archivo2 is not None:
+            st.success(f"✅ Archivo cargado: {archivo2.name}")
+    
+    st.markdown("---")
+    
+    # Botón para ejecutar el match
+    if archivo1 is not None and archivo2 is not None:
+        if st.button("🔍 EJECUTAR MATCH", use_container_width=True, type="primary"):
+            
+            with st.spinner("Procesando archivos y buscando coincidencias..."):
+                
+                # Cargar archivos
+                df1 = pd.read_excel(archivo1)
+                df2 = pd.read_excel(archivo2)
+                
+                # Mostrar información básica
+                st.info(f"📊 Archivo 1: {len(df1)} registros | Archivo 2: {len(df2)} registros")
+                
+                # Verificar que existan las columnas necesarias
+                columnas_df1 = ['Fecha', 'Paciente', 'Denomin.prestación', 'Médico de tratamiento (nombre)']
+                columnas_df2 = ['Fecha del Servicio', 'NHC Paciente', 'Descripción de Prestación', 'Profesional']
+                
+                columnas_faltantes_df1 = [col for col in columnas_df1 if col not in df1.columns]
+                columnas_faltantes_df2 = [col for col in columnas_df2 if col not in df2.columns]
+                
+                if columnas_faltantes_df1 or columnas_faltantes_df2:
+                    if columnas_faltantes_df1:
+                        st.error(f"❌ Archivo 1: Faltan columnas: {', '.join(columnas_faltantes_df1)}")
+                    if columnas_faltantes_df2:
+                        st.error(f"❌ Archivo 2: Faltan columnas: {', '.join(columnas_faltantes_df2)}")
+                    
+                    with st.expander("🔍 Ver columnas disponibles en Archivo 1"):
+                        st.write(df1.columns.tolist())
+                    with st.expander("🔍 Ver columnas disponibles en Archivo 2"):
+                        st.write(df2.columns.tolist())
+                    
+                    st.stop()
+                
+                # -----------------------------------------------------------------
+                # PASO 1: NORMALIZAR COLUMNAS PARA LA COMPARACIÓN
+                # -----------------------------------------------------------------
+                
+                # Copias para no modificar originales
+                df1_norm = df1.copy()
+                df2_norm = df2.copy()
+                
+                # Normalizar fechas
+                df1_norm['Fecha_norm'] = pd.to_datetime(df1_norm['Fecha'], errors='coerce').dt.date
+                df2_norm['Fecha_norm'] = pd.to_datetime(df2_norm['Fecha del Servicio'], errors='coerce').dt.date
+                
+                # Normalizar texto (quitar espacios extras, pasar a mayúsculas)
+                df1_norm['Paciente_norm'] = df1_norm['Paciente'].astype(str).str.strip().str.upper()
+                df2_norm['Paciente_norm'] = df2_norm['NHC Paciente'].astype(str).str.strip().str.upper()
+                
+                df1_norm['Prestacion_norm'] = df1_norm['Denomin.prestación'].astype(str).str.strip().str.upper()
+                df2_norm['Prestacion_norm'] = df2_norm['Descripción de Prestación'].astype(str).str.strip().str.upper()
+                
+                df1_norm['Medico_norm'] = df1_norm['Médico de tratamiento (nombre)'].astype(str).str.strip().str.upper()
+                df2_norm['Medico_norm'] = df2_norm['Profesional'].astype(str).str.strip().str.upper()
+                
+                # -----------------------------------------------------------------
+                # PASO 2: CREAR COLUMNA LLAVE PARA MATCH
+                # -----------------------------------------------------------------
+                df1_norm['llave_match'] = (
+                    df1_norm['Fecha_norm'].astype(str) + '|' +
+                    df1_norm['Paciente_norm'] + '|' +
+                    df1_norm['Prestacion_norm'] + '|' +
+                    df1_norm['Medico_norm']
+                )
+                
+                df2_norm['llave_match'] = (
+                    df2_norm['Fecha_norm'].astype(str) + '|' +
+                    df2_norm['Paciente_norm'] + '|' +
+                    df2_norm['Prestacion_norm'] + '|' +
+                    df2_norm['Medico_norm']
+                )
+                
+                # -----------------------------------------------------------------
+                # PASO 3: ENCONTRAR COINCIDENCIAS
+                # -----------------------------------------------------------------
+                
+                # Crear conjunto de llaves del archivo 2 (lo pagado)
+                llaves_pagadas = set(df2_norm['llave_match'].dropna().unique())
+                
+                # Marcar en df1 qué registros tienen match
+                df1_norm['Match'] = df1_norm['llave_match'].isin(llaves_pagadas)
+                
+                # Crear DataFrame de resultados (solo los que hicieron match)
+                df_match = df1[df1_norm['Match']].copy()
+                
+                # Crear DataFrame de no pagados (los que NO hicieron match)
+                df_no_pagados = df1[~df1_norm['Match']].copy()
+                
+                # -----------------------------------------------------------------
+                # PASO 4: MOSTRAR RESULTADOS
+                # -----------------------------------------------------------------
+                
+                st.markdown("---")
+                st.subheader("📊 Resultados del Match")
+                
+                # Métricas principales
+                col_m1, col_m2, col_m3, col_m4 = st.columns(4)
+                
+                with col_m1:
+                    st.markdown(f"""
+                    <div class='stMetric'>
+                        <label>📋 Total Archivo 1</label>
+                        <div class='metric-highlight'>{len(df1):,}</div>
+                        <small>Registros a verificar</small>
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                with col_m2:
+                    st.markdown(f"""
+                    <div class='stMetric'>
+                        <label>✅ Coincidencias</label>
+                        <div class='metric-highlight' style='color: #28a745;'>{len(df_match):,}</div>
+                        <small>Pagados correctamente</small>
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                with col_m3:
+                    st.markdown(f"""
+                    <div class='stMetric'>
+                        <label>❌ No pagados</label>
+                        <div class='metric-highlight' style='color: #dc3545;'>{len(df_no_pagados):,}</div>
+                        <small>No encontrados en Archivo 2</small>
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                with col_m4:
+                    porcentaje_coincidencia = (len(df_match) / len(df1) * 100) if len(df1) > 0 else 0
+                    st.markdown(f"""
+                    <div class='stMetric'>
+                        <label>📊 % Coincidencia</label>
+                        <div class='metric-highlight'>{porcentaje_coincidencia:.1f}%</div>
+                        <small>Tasa de pago</small>
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                st.markdown("---")
+                
+                # -----------------------------------------------------------------
+                # PASO 5: FILTROS POR PROFESIONAL Y DESCRIPCIÓN DE PRESTACIÓN
+                # -----------------------------------------------------------------
+                st.subheader("🔍 Análisis Detallado con Filtros")
+                
+                col_f1, col_f2 = st.columns(2)
+                
+                with col_f1:
+                    # Obtener lista de profesionales únicos del archivo 1
+                    profesionales = ['TODOS'] + sorted(df1['Médico de tratamiento (nombre)'].dropna().unique().tolist())
+                    profesional_filtro = st.selectbox(
+                        "👨‍⚕️ Filtrar por Profesional",
+                        profesionales,
+                        key="match_filtro_profesional"
+                    )
+                
+                with col_f2:
+                    # Obtener lista de prestaciones únicas del archivo 1
+                    prestaciones = ['TODAS'] + sorted(df1['Denomin.prestación'].dropna().unique().tolist())
+                    prestacion_filtro = st.selectbox(
+                        "🩺 Filtrar por Descripción de Prestación",
+                        prestaciones,
+                        key="match_filtro_prestacion"
+                    )
+                
+                # Aplicar filtros
+                df1_filtrado = df1.copy()
+                df_match_filtrado = df_match.copy()
+                df_no_pagados_filtrado = df_no_pagados.copy()
+                
+                if profesional_filtro != 'TODOS':
+                    df1_filtrado = df1_filtrado[df1_filtrado['Médico de tratamiento (nombre)'] == profesional_filtro]
+                    df_match_filtrado = df_match_filtrado[df_match_filtrado['Médico de tratamiento (nombre)'] == profesional_filtro]
+                    df_no_pagados_filtrado = df_no_pagados_filtrado[df_no_pagados_filtrado['Médico de tratamiento (nombre)'] == profesional_filtro]
+                
+                if prestacion_filtro != 'TODAS':
+                    df1_filtrado = df1_filtrado[df1_filtrado['Denomin.prestación'] == prestacion_filtro]
+                    df_match_filtrado = df_match_filtrado[df_match_filtrado['Denomin.prestación'] == prestacion_filtro]
+                    df_no_pagados_filtrado = df_no_pagados_filtrado[df_no_pagados_filtrado['Denomin.prestación'] == prestacion_filtro]
+                
+                # Métricas con filtros aplicados
+                col_fm1, col_fm2, col_fm3 = st.columns(3)
+                
+                with col_fm1:
+                    st.metric(
+                        "📋 Registros en filtro",
+                        f"{len(df1_filtrado):,}"
+                    )
+                
+                with col_fm2:
+                    st.metric(
+                        "✅ Pagados en filtro",
+                        f"{len(df_match_filtrado):,}",
+                        delta=f"{(len(df_match_filtrado)/len(df1_filtrado)*100):.1f}%" if len(df1_filtrado) > 0 else "0%"
+                    )
+                
+                with col_fm3:
+                    st.metric(
+                        "❌ No pagados en filtro",
+                        f"{len(df_no_pagados_filtrado):,}",
+                        delta=f"{(len(df_no_pagados_filtrado)/len(df1_filtrado)*100):.1f}%" if len(df1_filtrado) > 0 else "0%",
+                        delta_color="inverse"
+                    )
+                
+                # -----------------------------------------------------------------
+                # PASO 6: MOSTRAR TABLAS
+                # -----------------------------------------------------------------
+                
+                tab1, tab2, tab3 = st.tabs(["✅ Pagados", "❌ No Pagados", "📊 Resumen por Profesional"])
+                
+                with tab1:
+                    st.subheader(f"Registros Pagados Correctamente ({len(df_match_filtrado)})")
+                    if not df_match_filtrado.empty:
+                        st.dataframe(
+                            df_match_filtrado,
+                            use_container_width=True,
+                            hide_index=True
+                        )
+                        
+                        # Botón de descarga
+                        output = io.BytesIO()
+                        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                            df_match_filtrado.to_excel(writer, index=False, sheet_name='Pagados')
+                        output.seek(0)
+                        
+                        st.download_button(
+                            label="📥 Descargar Pagados (Excel)",
+                            data=output,
+                            file_name=f"pagados_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        )
+                    else:
+                        st.info("No hay registros pagados con los filtros seleccionados.")
+                
+                with tab2:
+                    st.subheader(f"Registros No Pagados ({len(df_no_pagados_filtrado)})")
+                    if not df_no_pagados_filtrado.empty:
+                        st.dataframe(
+                            df_no_pagados_filtrado,
+                            use_container_width=True,
+                            hide_index=True
+                        )
+                        
+                        # Botón de descarga
+                        output = io.BytesIO()
+                        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                            df_no_pagados_filtrado.to_excel(writer, index=False, sheet_name='No_Pagados')
+                        output.seek(0)
+                        
+                        st.download_button(
+                            label="📥 Descargar No Pagados (Excel)",
+                            data=output,
+                            file_name=f"no_pagados_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        )
+                    else:
+                        st.info("No hay registros no pagados con los filtros seleccionados.")
+                
+                with tab3:
+                    st.subheader("Resumen por Profesional")
+                    
+                    # Crear resumen por profesional
+                    resumen_profesional = []
+                    
+                    for profesional in df1['Médico de tratamiento (nombre)'].dropna().unique():
+                        df_prof = df1[df1['Médico de tratamiento (nombre)'] == profesional]
+                        df_prof_match = df_match[df_match['Médico de tratamiento (nombre)'] == profesional]
+                        
+                        total_registros = len(df_prof)
+                        pagados = len(df_prof_match)
+                        no_pagados = total_registros - pagados
+                        porcentaje_pago = (pagados / total_registros * 100) if total_registros > 0 else 0
+                        
+                        resumen_profesional.append({
+                            'Profesional': profesional,
+                            'Total Registros': total_registros,
+                            'Pagados': pagados,
+                            'No Pagados': no_pagados,
+                            '% Pago': f"{porcentaje_pago:.1f}%"
+                        })
+                    
+                    df_resumen = pd.DataFrame(resumen_profesional)
+                    df_resumen = df_resumen.sort_values('Total Registros', ascending=False)
+                    
+                    st.dataframe(
+                        df_resumen,
+                        use_container_width=True,
+                        hide_index=True,
+                        column_config={
+                            "Profesional": "Profesional",
+                            "Total Registros": st.column_config.NumberColumn("Total", format="%d"),
+                            "Pagados": st.column_config.NumberColumn("✅ Pagados", format="%d"),
+                            "No Pagados": st.column_config.NumberColumn("❌ No Pagados", format="%d"),
+                            "% Pago": "% Pago"
+                        }
+                    )
+                    
+                    # Botón de descarga del resumen
+                    output = io.BytesIO()
+                    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                        df_resumen.to_excel(writer, index=False, sheet_name='Resumen_Profesional')
+                    output.seek(0)
+                    
+                    st.download_button(
+                        label="📥 Descargar Resumen (Excel)",
+                        data=output,
+                        file_name=f"resumen_match_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    )
+    
+    else:
+        st.info("👆 Por favor, sube ambos archivos para realizar el match.")
+
+# -------------------------------------------------------------------
+# DASHBOARD ADMINISTRADOR - ACTUALIZADO CON PESTAÑA DE MATCH
 # -------------------------------------------------------------------
 def dashboard_admin(df):
     """Dashboard completo para administradores"""
@@ -1565,7 +1963,7 @@ def dashboard_admin(df):
         tabla_detalle_admin(df_filtered)
 
 # -------------------------------------------------------------------
-# DASHBOARD MÉDICO - COMPLETAMENTE ACTUALIZADO
+# DASHBOARD MÉDICO
 # -------------------------------------------------------------------
 def dashboard_medico(df, profesional_nombre):
     """Dashboard específico para médicos"""
@@ -1769,7 +2167,7 @@ def dashboard_medico(df, profesional_nombre):
     st.markdown("---")
     
     # -------------------------------------------------------------------
-    # ANÁLISIS POR TIPO DE PRESTACIÓN - ACTUALIZADO
+    # ANÁLISIS POR TIPO DE PRESTACIÓN
     # -------------------------------------------------------------------
     st.subheader("📋 Análisis por Tipo de Prestación")
     
@@ -1809,7 +2207,7 @@ def dashboard_medico(df, profesional_nombre):
     st.markdown("---")
     
     # -------------------------------------------------------------------
-    # TABLA ORIGINAL FILTRADA - CORREGIDA
+    # TABLA ORIGINAL FILTRADA
     # -------------------------------------------------------------------
     st.subheader("📋 Detalle de Servicios")
     
@@ -1924,7 +2322,7 @@ def dashboard_medico(df, profesional_nombre):
         st.warning("No se encontraron las columnas necesarias para mostrar el detalle de servicios.")
 
 # -------------------------------------------------------------------
-# PANEL DE ADMINISTRADOR - ACTUALIZADO CON PESTAÑA DE PROYECCIÓN
+# PANEL DE ADMINISTRADOR - ACTUALIZADO CON PESTAÑA DE MATCH
 # -------------------------------------------------------------------
 def panel_admin(df_actual):
     """Panel exclusivo para administradores"""
@@ -1936,8 +2334,14 @@ def panel_admin(df_actual):
     </div>
     """, unsafe_allow_html=True)
     
-    # AGREGAR LA NUEVA PESTAÑA DE PROYECCIÓN GERENCIA
-    tab1, tab2, tab3, tab4 = st.tabs(["📤 Carga de Datos", "📊 Dashboard General", "📈 Proyección Gerencia", "ℹ️ Información"])
+    # AGREGAR LA NUEVA PESTAÑA DE MATCH
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+        "📤 Carga de Datos", 
+        "📊 Dashboard General", 
+        "📈 Proyección Gerencia", 
+        "🔍 Match",
+        "ℹ️ Información"
+    ])
     
     with tab1:
         st.subheader("Cargar Nuevo Archivo de Datos")
@@ -2016,7 +2420,6 @@ def panel_admin(df_actual):
         else:
             st.warning("⚠️ No hay datos cargados. Por favor, carga un archivo en la pestaña 'Carga de Datos'.")
     
-    # NUEVA PESTAÑA DE PROYECCIÓN GERENCIA
     with tab3:
         if df_actual is not None and not df_actual.empty:
             proyeccion_gerencia(df_actual)
@@ -2024,10 +2427,14 @@ def panel_admin(df_actual):
             # Si no hay datos, mostrar proyección con escenario simulado
             proyeccion_gerencia(None)
     
+    # NUEVA PESTAÑA DE MATCH
     with tab4:
+        match_archivos()
+    
+    with tab5:
         st.subheader("Información del Sistema")
         st.markdown(f"""
-        **Versión:** 2.0.0  
+        **Versión:** 3.0.0  
         **Última actualización:** Febrero 2026  
         **Colores corporativos:** {COLORES['primary']} / {COLORES['secondary']}
         
