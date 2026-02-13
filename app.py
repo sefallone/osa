@@ -1409,6 +1409,10 @@ def match_archivos():
         - Se ordenan las palabras alfabéticamente
         
         Si **las 4 columnas coinciden** después de la normalización, la fila se considera como **"Pagado correctamente"**.
+        
+        **Nuevas columnas añadidas:**
+        - En pestaña "Pagados": Columna "Cobrado OSA" (Importe HHMM del Archivo 2)
+        - En pestaña "No Pagados": Columna "Por Cobrar OSA" (Importe HHMM del Archivo 1)
         """)
     
     # Crear dos columnas para los archivos
@@ -1546,7 +1550,38 @@ def match_archivos():
                 df_no_pagados = df1[~df1_norm['Match']].copy()
                 
                 # -----------------------------------------------------------------
-                # PASO 5: MOSTRAR RESULTADOS
+                # PASO 5: AÑADIR COLUMNAS DE IMPORTES
+                # -----------------------------------------------------------------
+                
+                # Para los pagados, añadir columna "Cobrado OSA" con el Importe HHMM del archivo 2
+                if not df_match.empty:
+                    # Crear un diccionario para mapear llave_match a Importe HHMM del archivo 2
+                    df2_norm['Importe_HHMM_Archivo2'] = pd.to_numeric(df2_norm.get('Importe HHMM', 0), errors='coerce')
+                    mapa_importes = dict(zip(df2_norm['llave_match'], df2_norm['Importe_HHMM_Archivo2']))
+                    
+                    # Añadir la columna a df_match
+                    df_match_con_importes = df_match.copy()
+                    df_match_con_importes['Cobrado OSA (€)'] = df_match_con_importes.index.map(
+                        lambda idx: mapa_importes.get(df1_norm.loc[idx, 'llave_match'], 0)
+                    )
+                else:
+                    df_match_con_importes = df_match.copy()
+                    df_match_con_importes['Cobrado OSA (€)'] = 0
+                
+                # Para los no pagados, añadir columna "Por Cobrar OSA" con el Importe HHMM del archivo 1
+                if not df_no_pagados.empty:
+                    # Añadir la columna a df_no_pagados
+                    df_no_pagados_con_importes = df_no_pagados.copy()
+                    # Buscar el importe en el archivo 1 para cada registro
+                    df_no_pagados_con_importes['Por Cobrar OSA (€)'] = df_no_pagados_con_importes.index.map(
+                        lambda idx: pd.to_numeric(df1.loc[idx].get('Importe HHMM', 0), errors='coerce')
+                    )
+                else:
+                    df_no_pagados_con_importes = df_no_pagados.copy()
+                    df_no_pagados_con_importes['Por Cobrar OSA (€)'] = 0
+                
+                # -----------------------------------------------------------------
+                # PASO 6: MOSTRAR RESULTADOS
                 # -----------------------------------------------------------------
                 
                 st.markdown("---")
@@ -1568,7 +1603,7 @@ def match_archivos():
                     st.markdown(f"""
                     <div class='stMetric'>
                         <label>✅ Coincidencias</label>
-                        <div class='metric-highlight' style='color: #28a745;'>{len(df_match):,}</div>
+                        <div class='metric-highlight' style='color: #28a745;'>{len(df_match_con_importes):,}</div>
                         <small>Pagados correctamente</small>
                     </div>
                     """, unsafe_allow_html=True)
@@ -1577,13 +1612,13 @@ def match_archivos():
                     st.markdown(f"""
                     <div class='stMetric'>
                         <label>❌ No pagados</label>
-                        <div class='metric-highlight' style='color: #dc3545;'>{len(df_no_pagados):,}</div>
+                        <div class='metric-highlight' style='color: #dc3545;'>{len(df_no_pagados_con_importes):,}</div>
                         <small>No encontrados en Archivo 2</small>
                     </div>
                     """, unsafe_allow_html=True)
                 
                 with col_m4:
-                    porcentaje_coincidencia = (len(df_match) / len(df1) * 100) if len(df1) > 0 else 0
+                    porcentaje_coincidencia = (len(df_match_con_importes) / len(df1) * 100) if len(df1) > 0 else 0
                     st.markdown(f"""
                     <div class='stMetric'>
                         <label>📊 % Coincidencia</label>
@@ -1595,7 +1630,7 @@ def match_archivos():
                 st.markdown("---")
                 
                 # -----------------------------------------------------------------
-                # PASO 6: FILTROS POR PROFESIONAL Y DESCRIPCIÓN DE PRESTACIÓN
+                # PASO 7: FILTROS POR PROFESIONAL Y DESCRIPCIÓN DE PRESTACIÓN
                 # -----------------------------------------------------------------
                 st.subheader("🔍 Análisis Detallado con Filtros")
                 
@@ -1621,8 +1656,8 @@ def match_archivos():
                 
                 # Aplicar filtros
                 df1_filtrado = df1.copy()
-                df_match_filtrado = df_match.copy()
-                df_no_pagados_filtrado = df_no_pagados.copy()
+                df_match_filtrado = df_match_con_importes.copy()
+                df_no_pagados_filtrado = df_no_pagados_con_importes.copy()
                 
                 if profesional_filtro != 'TODOS':
                     df1_filtrado = df1_filtrado[df1_filtrado['Médico de tratamiento (nombre)'] == profesional_filtro]
@@ -1659,7 +1694,7 @@ def match_archivos():
                     )
                 
                 # -----------------------------------------------------------------
-                # PASO 7: MOSTRAR TABLAS
+                # PASO 8: MOSTRAR TABLAS
                 # -----------------------------------------------------------------
                 
                 tab1, tab2, tab3 = st.tabs(["✅ Pagados", "❌ No Pagados", "📊 Resumen por Profesional"])
@@ -1667,11 +1702,27 @@ def match_archivos():
                 with tab1:
                     st.subheader(f"Registros Pagados Correctamente ({len(df_match_filtrado)})")
                     if not df_match_filtrado.empty:
-                        st.dataframe(
-                            df_match_filtrado,
-                            use_container_width=True,
-                            hide_index=True
-                        )
+                        # Seleccionar columnas a mostrar incluyendo Cobrado OSA
+                        columnas_mostrar = df_match_filtrado.columns.tolist()
+                        if 'Cobrado OSA (€)' in df_match_filtrado.columns:
+                            st.dataframe(
+                                df_match_filtrado,
+                                use_container_width=True,
+                                hide_index=True,
+                                column_config={
+                                    "Cobrado OSA (€)": st.column_config.NumberColumn(
+                                        "Cobrado OSA (€)",
+                                        format="€%.2f",
+                                        help="Importe HHMM del Archivo 2 (pagado)"
+                                    )
+                                }
+                            )
+                        else:
+                            st.dataframe(
+                                df_match_filtrado,
+                                use_container_width=True,
+                                hide_index=True
+                            )
                         
                         # Botón de descarga
                         output = io.BytesIO()
@@ -1691,11 +1742,26 @@ def match_archivos():
                 with tab2:
                     st.subheader(f"Registros No Pagados ({len(df_no_pagados_filtrado)})")
                     if not df_no_pagados_filtrado.empty:
-                        st.dataframe(
-                            df_no_pagados_filtrado,
-                            use_container_width=True,
-                            hide_index=True
-                        )
+                        # Seleccionar columnas a mostrar incluyendo Por Cobrar OSA
+                        if 'Por Cobrar OSA (€)' in df_no_pagados_filtrado.columns:
+                            st.dataframe(
+                                df_no_pagados_filtrado,
+                                use_container_width=True,
+                                hide_index=True,
+                                column_config={
+                                    "Por Cobrar OSA (€)": st.column_config.NumberColumn(
+                                        "Por Cobrar OSA (€)",
+                                        format="€%.2f",
+                                        help="Importe HHMM del Archivo 1 (pendiente)"
+                                    )
+                                }
+                            )
+                        else:
+                            st.dataframe(
+                                df_no_pagados_filtrado,
+                                use_container_width=True,
+                                hide_index=True
+                            )
                         
                         # Botón de descarga
                         output = io.BytesIO()
@@ -1715,24 +1781,46 @@ def match_archivos():
                 with tab3:
                     st.subheader("Resumen por Profesional")
                     
-                    # Crear resumen por profesional
+                    # Crear resumen por profesional con las nuevas columnas
                     resumen_profesional = []
                     
                     for profesional in df1['Médico de tratamiento (nombre)'].dropna().unique():
+                        # Filtrar registros del profesional
                         df_prof = df1[df1['Médico de tratamiento (nombre)'] == profesional]
                         df_prof_match = df_match[df_match['Médico de tratamiento (nombre)'] == profesional]
+                        df_prof_nomatch = df_no_pagados[df_no_pagados['Médico de tratamiento (nombre)'] == profesional]
                         
                         total_registros = len(df_prof)
                         pagados = len(df_prof_match)
                         no_pagados = total_registros - pagados
                         porcentaje_pago = (pagados / total_registros * 100) if total_registros > 0 else 0
                         
+                        # Calcular importes
+                        # Para pagados, buscar el importe en el archivo 2
+                        cobrado_total = 0
+                        for idx in df_prof_match.index:
+                            llave = df1_norm.loc[idx, 'llave_match'] if idx in df1_norm.index else None
+                            if llave and llave in llaves_pagadas:
+                                # Buscar en df2_norm
+                                registro_pagado = df2_norm[df2_norm['llave_match'] == llave]
+                                if not registro_pagado.empty:
+                                    importe = pd.to_numeric(registro_pagado.iloc[0].get('Importe HHMM', 0), errors='coerce')
+                                    cobrado_total += importe if pd.notna(importe) else 0
+                        
+                        # Para no pagados, sumar importe del archivo 1
+                        por_cobrar_total = 0
+                        for idx in df_prof_nomatch.index:
+                            importe = pd.to_numeric(df1.loc[idx].get('Importe HHMM', 0), errors='coerce')
+                            por_cobrar_total += importe if pd.notna(importe) else 0
+                        
                         resumen_profesional.append({
                             'Profesional': profesional,
                             'Total Registros': total_registros,
                             'Pagados': pagados,
                             'No Pagados': no_pagados,
-                            '% Pago': f"{porcentaje_pago:.1f}%"
+                            '% Pago': f"{porcentaje_pago:.1f}%",
+                            'Cobrado (€)': cobrado_total,
+                            'Por Cobrar (€)': por_cobrar_total
                         })
                     
                     df_resumen = pd.DataFrame(resumen_profesional)
@@ -1747,7 +1835,9 @@ def match_archivos():
                             "Total Registros": st.column_config.NumberColumn("Total", format="%d"),
                             "Pagados": st.column_config.NumberColumn("✅ Pagados", format="%d"),
                             "No Pagados": st.column_config.NumberColumn("❌ No Pagados", format="%d"),
-                            "% Pago": "% Pago"
+                            "% Pago": "% Pago",
+                            "Cobrado (€)": st.column_config.NumberColumn("Cobrado (€)", format="€%.2f"),
+                            "Por Cobrar (€)": st.column_config.NumberColumn("Por Cobrar (€)", format="€%.2f")
                         }
                     )
                     
@@ -1765,11 +1855,15 @@ def match_archivos():
                     )
                 
                 # -----------------------------------------------------------------
-                # PASO 8: GUARDAR ARCHIVOS PARA LOS MÉDICOS
+                # PASO 9: GUARDAR ARCHIVOS PARA LOS MÉDICOS
                 # -----------------------------------------------------------------
                 # Guardar los archivos originales para que los médicos puedan consultarlos
                 DataManager.save_dataframe(df1, 'archivo1_match.parquet')
                 DataManager.save_dataframe(df2, 'archivo2_match.parquet')
+                
+                # Guardar también los DataFrames con las nuevas columnas para los médicos
+                DataManager.save_dataframe(df_match_con_importes, 'match_pagados.parquet')
+                DataManager.save_dataframe(df_no_pagados_con_importes, 'match_nopagados.parquet')
                 
                 st.success("✅ Archivos guardados. Los médicos ya pueden ver su match personal.")
     
@@ -1873,6 +1967,35 @@ def match_personal_medico(df_archivo1, df_archivo2, nombre_medico):
         df_match = df_archivo1.loc[indices_match] if not indices_match.empty else pd.DataFrame()
         df_no_pagados = df_archivo1.loc[indices_no_match] if not indices_no_match.empty else pd.DataFrame()
         
+        # -----------------------------------------------------------------
+        # AÑADIR COLUMNAS DE IMPORTES PARA EL MÉDICO
+        # -----------------------------------------------------------------
+        
+        # Para los pagados, añadir columna "Cobrado OSA" con el Importe HHMM del archivo 2
+        if not df_match.empty:
+            # Crear un diccionario para mapear llave_match a Importe HHMM del archivo 2
+            df2_medico['Importe_HHMM_Archivo2'] = pd.to_numeric(df2_medico.get('Importe HHMM', 0), errors='coerce')
+            mapa_importes = dict(zip(df2_medico['llave_match'], df2_medico['Importe_HHMM_Archivo2']))
+            
+            # Añadir la columna a df_match
+            df_match_con_importes = df_match.copy()
+            df_match_con_importes['Cobrado OSA (€)'] = df_match_con_importes.index.map(
+                lambda idx: mapa_importes.get(df1_medico.loc[idx, 'llave_match'], 0) if idx in df1_medico.index else 0
+            )
+        else:
+            df_match_con_importes = df_match.copy()
+            df_match_con_importes['Cobrado OSA (€)'] = 0
+        
+        # Para los no pagados, añadir columna "Por Cobrar OSA" con el Importe HHMM del archivo 1
+        if not df_no_pagados.empty:
+            df_no_pagados_con_importes = df_no_pagados.copy()
+            df_no_pagados_con_importes['Por Cobrar OSA (€)'] = df_no_pagados_con_importes.index.map(
+                lambda idx: pd.to_numeric(df_archivo1.loc[idx].get('Importe HHMM', 0), errors='coerce')
+            )
+        else:
+            df_no_pagados_con_importes = df_no_pagados.copy()
+            df_no_pagados_con_importes['Por Cobrar OSA (€)'] = 0
+        
         # MOSTRAR RESULTADOS
         st.markdown("---")
         st.subheader(f"📊 Tu Match de Pagos")
@@ -1892,7 +2015,7 @@ def match_personal_medico(df_archivo1, df_archivo2, nombre_medico):
             st.markdown(f"""
             <div class='stMetric'>
                 <label>✅ Pagados</label>
-                <div class='metric-highlight' style='color: #28a745;'>{len(df_match):,}</div>
+                <div class='metric-highlight' style='color: #28a745;'>{len(df_match_con_importes):,}</div>
                 <small>Coinciden en archivo de pagos</small>
             </div>
             """, unsafe_allow_html=True)
@@ -1901,7 +2024,7 @@ def match_personal_medico(df_archivo1, df_archivo2, nombre_medico):
             st.markdown(f"""
             <div class='stMetric'>
                 <label>⏳ Pendientes</label>
-                <div class='metric-highlight' style='color: #dc3545;'>{len(df_no_pagados):,}</div>
+                <div class='metric-highlight' style='color: #dc3545;'>{len(df_no_pagados_con_importes):,}</div>
                 <small>No aparecen en pagos</small>
             </div>
             """, unsafe_allow_html=True)
@@ -1910,22 +2033,36 @@ def match_personal_medico(df_archivo1, df_archivo2, nombre_medico):
         tab1, tab2 = st.tabs(["✅ Pagados", "⏳ Pendientes de cobro"])
         
         with tab1:
-            st.subheader(f"Servicios Pagados ({len(df_match)})")
-            if not df_match.empty:
+            st.subheader(f"Servicios Pagados ({len(df_match_con_importes)})")
+            if not df_match_con_importes.empty:
                 # Seleccionar columnas relevantes para mostrar
                 columnas_mostrar = ['Fecha', 'Paciente', 'Denomin.prestación']
-                columnas_existentes = [col for col in columnas_mostrar if col in df_match.columns]
+                columnas_existentes = [col for col in columnas_mostrar if col in df_match_con_importes.columns]
                 
-                st.dataframe(
-                    df_match[columnas_existentes],
-                    use_container_width=True,
-                    hide_index=True
-                )
+                # Mostrar con columna de Cobrado OSA
+                if 'Cobrado OSA (€)' in df_match_con_importes.columns:
+                    st.dataframe(
+                        df_match_con_importes[columnas_existentes + ['Cobrado OSA (€)']],
+                        use_container_width=True,
+                        hide_index=True,
+                        column_config={
+                            "Cobrado OSA (€)": st.column_config.NumberColumn(
+                                "Cobrado OSA (€)",
+                                format="€%.2f"
+                            )
+                        }
+                    )
+                else:
+                    st.dataframe(
+                        df_match_con_importes[columnas_existentes],
+                        use_container_width=True,
+                        hide_index=True
+                    )
                 
                 # Botón de descarga
                 output = io.BytesIO()
                 with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                    df_match.to_excel(writer, index=False, sheet_name='Pagados')
+                    df_match_con_importes.to_excel(writer, index=False, sheet_name='Pagados')
                 output.seek(0)
                 
                 st.download_button(
@@ -1938,21 +2075,35 @@ def match_personal_medico(df_archivo1, df_archivo2, nombre_medico):
                 st.info("No tienes servicios pagados en este período.")
         
         with tab2:
-            st.subheader(f"Servicios Pendientes ({len(df_no_pagados)})")
-            if not df_no_pagados.empty:
+            st.subheader(f"Servicios Pendientes ({len(df_no_pagados_con_importes)})")
+            if not df_no_pagados_con_importes.empty:
                 columnas_mostrar = ['Fecha', 'Paciente', 'Denomin.prestación']
-                columnas_existentes = [col for col in columnas_mostrar if col in df_no_pagados.columns]
+                columnas_existentes = [col for col in columnas_mostrar if col in df_no_pagados_con_importes.columns]
                 
-                st.dataframe(
-                    df_no_pagados[columnas_existentes],
-                    use_container_width=True,
-                    hide_index=True
-                )
+                # Mostrar con columna de Por Cobrar OSA
+                if 'Por Cobrar OSA (€)' in df_no_pagados_con_importes.columns:
+                    st.dataframe(
+                        df_no_pagados_con_importes[columnas_existentes + ['Por Cobrar OSA (€)']],
+                        use_container_width=True,
+                        hide_index=True,
+                        column_config={
+                            "Por Cobrar OSA (€)": st.column_config.NumberColumn(
+                                "Por Cobrar OSA (€)",
+                                format="€%.2f"
+                            )
+                        }
+                    )
+                else:
+                    st.dataframe(
+                        df_no_pagados_con_importes[columnas_existentes],
+                        use_container_width=True,
+                        hide_index=True
+                    )
                 
                 # Botón de descarga
                 output = io.BytesIO()
                 with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                    df_no_pagados.to_excel(writer, index=False, sheet_name='Pendientes')
+                    df_no_pagados_con_importes.to_excel(writer, index=False, sheet_name='Pendientes')
                 output.seek(0)
                 
                 st.download_button(
@@ -1964,19 +2115,24 @@ def match_personal_medico(df_archivo1, df_archivo2, nombre_medico):
             else:
                 st.success("¡Todos tus servicios han sido pagados! ✅")
         
-        # Resumen ejecutivo
+        # Resumen ejecutivo con importes
         st.markdown("---")
         st.subheader("📋 Resumen Ejecutivo")
         
         total_servicios = len(df1_medico)
         if total_servicios > 0:
+            # Calcular totales de importes
+            total_cobrado = df_match_con_importes['Cobrado OSA (€)'].sum() if not df_match_con_importes.empty and 'Cobrado OSA (€)' in df_match_con_importes.columns else 0
+            total_por_cobrar = df_no_pagados_con_importes['Por Cobrar OSA (€)'].sum() if not df_no_pagados_con_importes.empty and 'Por Cobrar OSA (€)' in df_no_pagados_con_importes.columns else 0
+            
             col_r1, col_r2 = st.columns(2)
             
             with col_r1:
                 st.markdown(f"""
                 <div style='background-color: #e8f5e9; padding: 20px; border-radius: 10px;'>
                     <h4 style='color: #2e7d32;'>✅ Lo cobrado</h4>
-                    <p style='font-size: 18px;'><strong>{len(df_match)} servicios</strong> ({len(df_match)/total_servicios*100:.1f}%)</p>
+                    <p style='font-size: 18px;'><strong>{len(df_match_con_importes)} servicios</strong> ({len(df_match_con_importes)/total_servicios*100:.1f}%)</p>
+                    <p style='font-size: 16px;'><strong>Total cobrado: €{total_cobrado:,.2f}</strong></p>
                     <p>Estos servicios ya aparecen en el archivo de pagos.</p>
                 </div>
                 """, unsafe_allow_html=True)
@@ -1985,7 +2141,8 @@ def match_personal_medico(df_archivo1, df_archivo2, nombre_medico):
                 st.markdown(f"""
                 <div style='background-color: #ffebee; padding: 20px; border-radius: 10px;'>
                     <h4 style='color: #c62828;'>⏳ Pendiente</h4>
-                    <p style='font-size: 18px;'><strong>{len(df_no_pagados)} servicios</strong> ({len(df_no_pagados)/total_servicios*100:.1f}%)</p>
+                    <p style='font-size: 18px;'><strong>{len(df_no_pagados_con_importes)} servicios</strong> ({len(df_no_pagados_con_importes)/total_servicios*100:.1f}%)</p>
+                    <p style='font-size: 16px;'><strong>Total por cobrar: €{total_por_cobrar:,.2f}</strong></p>
                     <p>Estos servicios aún no aparecen en pagos.</p>
                 </div>
                 """, unsafe_allow_html=True)
@@ -2726,7 +2883,7 @@ def panel_admin(df_actual):
     with tab5:
         st.subheader("Información del Sistema")
         st.markdown(f"""
-        **Versión:** 3.0.0  
+        **Versión:** 3.1.0  
         **Última actualización:** Febrero 2026  
         **Colores corporativos:** {COLORES['primary']} / {COLORES['secondary']}
         
